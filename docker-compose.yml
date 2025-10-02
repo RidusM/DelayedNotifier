@@ -1,0 +1,160 @@
+networks:
+  app-network:
+    driver: bridge
+    name: app-network
+
+volumes:
+  pgdata:
+  prometheus_data:
+  grafana_data:
+
+services:
+
+  db:
+    image: postgres:17-alpine
+    container_name: order-db
+    environment:
+      POSTGRES_DB: ${DB_NAME:-orders_db}
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+    ports:
+      - "${DB_PORT:-5432}:${DB_PORT:-5432}"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres} -d ${DB_NAME:-orders_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.9.2
+    container_name: order-zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  kafka:
+    image: confluentinc/cp-kafka:7.4.0
+    container_name: order-kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+    networks:
+      - app-network
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: 'zookeeper:2181'
+      KAFKA_LISTENERS: INTERNAL://0.0.0.0:29092,EXTERNAL://0.0.0.0:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:29092,EXTERNAL://localhost:9092
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_CREATE_TOPICS: "orders:1:1,dlq-orders:1:1"
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-topics --bootstrap-server localhost:29092 --list || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 15
+      start_period: 60s
+    restart: unless-stopped
+
+
+  db-migrator:
+    image: migrate/migrate
+    container_name: order-db-migrator
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - app-network
+    volumes:
+      - ./migrations:/migrations:ro
+    command:
+      - "-path"
+      - "/migrations"
+      - "-database"
+      - "postgres://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}?sslmode=${DB_SSL_MODE}"
+      - "up"
+    restart: "no"
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: order-service-app
+    depends_on:
+      db:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      db-migrator:
+        condition: service_completed_successfully
+    ports:
+      - "${HTTP_PORT:-8080}:${HTTP_PORT:-8080}"
+      - "${METRICS_PORT:-8081}:${METRICS_PORT:-8081}"
+    networks:
+      - app-network
+    environment:
+      - CONFIG_PATH=/app/configs/dev.env
+    restart: on-failure
+
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    container_name: order-prometheus
+    volumes:
+      - ./volumes/prometheus:/etc/prometheus
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+    ports:
+      - "9090:9090"
+    networks:
+      - app-network
+    depends_on:
+      - app
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana-enterprise:12.1.1-ubuntu
+    container_name: order-grafana
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./volumes/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-grafana}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    networks:
+      - app-network
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+
+  kafka-producer:
+    build:
+      context: .
+      dockerfile: Dockerfile.producer
+    container_name: order-kafka-producer
+    depends_on:
+      kafka:
+        condition: service_started
+    networks:
+      - app-network
