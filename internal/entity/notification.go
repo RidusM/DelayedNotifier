@@ -21,8 +21,8 @@ const (
 )
 
 type Notification struct {
-	Id          uuid.UUID `json:"id"          validate:"required,uuid_strict"` // make v7
-	UserID      uuid.UUID `json:"user_id" validate:"required,uuid_strict"`
+	Id          uuid.UUID `json:"notify_uid"          validate:"required,uuid_strict"` // make v7
+	UserID      uuid.UUID `json:"user_uid" validate:"required,uuid_strict"`
 	Channel     Channel   `json:"channel"        validate:"required"`
 	Payload     string    `json:"message" validate:"required,max=255"`
 	ScheduledAt time.Time `json:"scheduled_at" validate:"required"`

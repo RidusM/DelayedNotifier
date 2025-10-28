@@ -1,26 +1,24 @@
 package httpt
 
 import (
-	"wbtest/internal/service"
-	"wbtest/pkg/logger"
-	"wbtest/pkg/metric"
-
 	"github.com/gin-gonic/gin"
+	"github.com/ridusm/delayednotifier/pkg/logger"
+	"github.com/ridusm/delayednotifier/pkg/metric"
 )
 
-type OrderHandler struct {
-	svc     *service.OrderService
+type Handler struct {
+	svc     *service.Notification
 	log     logger.Logger
 	metrics metric.HTTP
 	router  *gin.Engine
 }
 
-func NewOrderHandler(
-	svc *service.OrderService,
+func NewNotificationHandler(
+	svc *service.Notification,
 	log logger.Logger,
 	metrics metric.HTTP,
-) *OrderHandler {
-	h := &OrderHandler{
+) *Handler {
+	h := &Handler{
 		svc:     svc,
 		log:     log,
 		metrics: metrics,

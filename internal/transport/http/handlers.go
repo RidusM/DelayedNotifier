@@ -25,11 +25,11 @@ const (
 // @Failure 404 {object} httpt.ErrorResponse "Уведомление не найдено"
 // @Failure 500 {object} httpt.ErrorResponse "Внутренняя ошибка сервера"
 // @Router /notify/{id} [get]
-func (h *NotifyHandler) getNotifyHandler(c *gin.Context) {
+func (h *Handler) getNotifyHandler(c *gin.Context) {
 	const op = "transport.getNotifyHandler"
 
 	log := h.log.Ctx(c.Request.Context())
-	notifyUIDStr := c.Param("id")
+	notifyUIDStr := c.Param("notify_uid")
 
 	notifyUID, err := uuid.Parse(notifyUIDStr)
 	if err != nil {
@@ -47,13 +47,13 @@ func (h *NotifyHandler) getNotifyHandler(c *gin.Context) {
 	}
 
 	log.LogAttrs(ctx, logger.InfoLevel, "notify retrieved successfully",
-		logger.String("notify_id", notifyUIDStr),
+		logger.String("notify_uid", notifyUIDStr),
 	)
 
 	c.JSON(http.StatusOK, notify)
 }
 
-func (h *NotifyHandler) postNotifyHandler(c *gin.Context) {
+func (h *Handler) postNotifyHandler(c *gin.Context) {
 	const op = "transport.postNotifyHandler"
 
 	log := h.log.Ctx(c.Request.Context())
@@ -81,14 +81,14 @@ func (h *NotifyHandler) postNotifyHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, notify)
 }
 
-func (h *NotifyHandler) getNotifyHandler(c *gin.Context) {
-	const op = "transport.getNotifyHandler"
+func (h *Handler) deleteNotifyHandler(c *gin.Context) {
+	const op = "transport.http.deleteNotifyHandler"
 
 	log := h.log.Ctx(c.Request.Context())
 	notifyUIDStr := c.Param("notify_uid")
 
 	notifyUID, err := uuid.Parse(notifyUIDStr)
-	if err != nil {
+	if err != nil{
 		h.handleInvalidUUID(c, op, notifyUIDStr)
 		return
 	}
@@ -96,13 +96,13 @@ func (h *NotifyHandler) getNotifyHandler(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(c.Request.Context(), _defaultContextTimeout)
 	defer cancel()
 
-	notify, err := h.svc.GetNotify(ctx, notifyUID)
-	if err != nil {
+	notify, err := h.svc.DeleteNotify(ctx, notifyUID)
+	if err != nil{
 		h.handleServiceError(c, err, op)
 		return
 	}
 
-	log.LogAttrs(ctx, logger.InfoLevel, "notify retrieved successfully",
+	log.LogAttrs(ctx, logger.InfoLevel, "notify deleted successfully",
 		logger.String("notify_uid", notifyUIDStr),
 	)
 

@@ -8,9 +8,9 @@ import (
 	ginSwagger "github.com/swaggo/gin-swagger"
 )
 
-// @title           Order Service API
+// @title           Notification Service API
 // @version         1.0
-// @description     API для управления заказами
+// @description     API для работы с уведомлениями
 // @termsOfService  http://swagger.io/terms/
 // @contact.name    RidusM
 // @contact.email   stormkillpeople@gmail.com
@@ -18,7 +18,7 @@ import (
 // @license.url     https://github.com/aws/mit-0
 // @host            localhost:8080
 // @BasePath        /
-func (h *OrderHandler) setupRoutes() {
+func (h *Handler) setupRoutes() {
 	h.router.GET("/health", func(c *gin.Context) {
 		c.Status(http.StatusOK)
 	})
@@ -29,7 +29,7 @@ func (h *OrderHandler) setupRoutes() {
 
 	orders := h.router.Group("/orders")
 	{
-		orders.GET("/:order_uid", h.getOrderHandler)
+		orders.GET("/:order_uid", h.getHandler)
 	}
 
 	h.router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))

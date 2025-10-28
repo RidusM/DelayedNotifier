@@ -11,7 +11,7 @@ import (
 )
 
 // пока заглушка с l0
-func (h *NotificationHandler) handleServiceError(c *gin.Context, err error, op string) {
+func (h *Handler) handleServiceError(c *gin.Context, err error, op string) {
 	log := h.log.Ctx(c.Request.Context())
 
 	log.LogAttrs(c.Request.Context(), logger.ErrorLevel, op+" failed",
@@ -48,7 +48,7 @@ func (h *NotificationHandler) handleServiceError(c *gin.Context, err error, op s
 	}
 }
 
-func (h *NotificationHandler) handleInvalidUUID(c *gin.Context, op, value string) {
+func (h *Handler) handleInvalidUUID(c *gin.Context, op, value string) {
 	log := h.log.Ctx(c.Request.Context())
 
 	log.LogAttrs(c.Request.Context(), logger.WarnLevel, "invalid notification UUID format",
