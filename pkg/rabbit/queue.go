@@ -3,6 +3,9 @@ package queue
 import (
 	"encoding/json"
 	"log"
+
+	amqp "github.com/rabbitmq/amqp091-go"
+	"github.com/ridusm/delayednotifier/internal/entity"
 )
 
 type RabbitMQ struct {
@@ -21,7 +24,7 @@ func NewRabbitMQ(url string) *RabbitMQ {
 		log.Fatal(err)
 	}
 
-	q, err := ch.QueueDeclare("notifications", false, false, false, false, nil)
+	_, err = ch.QueueDeclare("notifications", false, false, false, false, nil)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -44,7 +47,7 @@ func (rmq *RabbitMQ) Consume(handle func(*entity.Notification)) {
 	}
 
 	for msg := range msgs {
-		var n Notification
+		var n entity.Notification
 		json.Unmarshal(msg.Body, &n)
 		handle(&n)
 	}

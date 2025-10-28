@@ -14,6 +14,7 @@ require (
 	github.com/jackc/pgx/v4 v4.18.2
 	github.com/jackc/pgx/v5 v5.5.4
 	github.com/prometheus/client_golang v1.23.2
+	github.com/rabbitmq/amqp091-go v1.10.0
 	github.com/redis/go-redis/extra/redisotel/v9 v9.15.1
 	github.com/redis/go-redis/v9 v9.16.0
 	go.uber.org/mock v0.6.0
