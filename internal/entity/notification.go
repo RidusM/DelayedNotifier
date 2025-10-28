@@ -6,10 +6,29 @@ import (
 	"github.com/google/uuid"
 )
 
+type Channel string
+
+type Status int
+
+const (
+	Email    Channel = "EMAIL"
+	Telegram Channel = "TELEGRAM"
+	PUSH     Channel = "PUSH"
+
+	Send    Status = 1
+	Waiting Status = 0
+	Lose    Status = -1
+)
+
 type Notification struct {
-	Id        uuid.UUID `json:"id"          validate:"required,uuid_strict"`
-	Timestamp time.Time `json:"timestamp"       validate:"required"`
-	Channel   string    `json:"channel"        validate:"required,max=50"`
-	Message   string    `json:"message"        validate:"required,max=255"`
-	User      string    `json:"user" validate:"required"`
+	Id          uuid.UUID `json:"id"          validate:"required,uuid_strict"` // make v7
+	UserID      uuid.UUID `json:"user_id" validate:"required,uuid_strict"`
+	Channel     Channel   `json:"channel"        validate:"required"`
+	Payload     string    `json:"message" validate:"required,max=255"`
+	ScheduledAt time.Time `json:"scheduled_at" validate:"required"`
+	SentAt      time.Time `json:"sent_at" validate:"required"`
+	Status      Status    `json:"status" validate:"required"`
+	RetryCount  int       `json:"retry_count" validate:"required"`
+	LastError   string    `json:"last_error" validate:"required"`
+	CreatedAt   time.Time `json:"created_at"       validate:"required"`
 }

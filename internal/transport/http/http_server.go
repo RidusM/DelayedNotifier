@@ -9,9 +9,9 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
-	"wbtest/internal/config"
-	"wbtest/pkg/logger"
 
+	"github.com/ridusm/delayednotifier/internal/config"
+	"github.com/ridusm/delayednotifier/pkg/logger"
 	"golang.org/x/sync/errgroup"
 )
 

@@ -3,8 +3,6 @@ package queue
 import (
 	"encoding/json"
 	"log"
-
-	"github.com/ridusm/delayednotifier/internal/entity"
 )
 
 type RabbitMQ struct {

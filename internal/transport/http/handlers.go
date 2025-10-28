@@ -4,10 +4,10 @@ import (
 	"context"
 	"net/http"
 	"time"
-	"wbtest/pkg/logger"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/ridusm/delayednotifier/pkg/logger"
 )
 
 const (

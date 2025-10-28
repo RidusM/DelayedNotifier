@@ -1,4 +1,4 @@
-FROM golang:1.25.0-alpine AS go-builder
+FROM golang:1.25.3-alpine AS go-builder
 
 WORKDIR /app
 
@@ -9,7 +9,7 @@ RUN go mod download && go mod verify
 COPY . .
 
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
-    go build -a -installsuffix cgo -o ./bin/order-service ./cmd/order-service/main.go
+    go build -a -installsuffix cgo -o ./bin/delayed-notifier ./cmd/delayed-notifier/main.go
 
 FROM alpine:3.22
 
@@ -18,6 +18,6 @@ COPY --from=go-builder /app/migrations /app/migrations
 COPY --from=go-builder /app/docs /app/docs
 COPY --from=go-builder /app/web /web
 
-COPY --from=go-builder /app/bin/order-service /order-service
+COPY --from=go-builder /app/bin/delayed-notifier /delayed-notifier
 
-ENTRYPOINT ["/order-service"]
+ENTRYPOINT ["/delayed-notifier"]

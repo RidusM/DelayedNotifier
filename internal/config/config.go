@@ -10,6 +10,7 @@ import (
 
 	"github.com/go-playground/validator/v10"
 	"github.com/ilyakaznacheev/cleanenv"
+	"github.com/ridusm/delayednotifier/internal/entity"
 )
 
 type (
