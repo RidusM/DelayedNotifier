@@ -18,14 +18,13 @@ WHERE status = 'waiting';
 CREATE INDEX idx_notifications_user_id ON notifications (user_id);
 
 CREATE TABLE user_telegram_links (
-    user_id UUID PRIMARY KEY REFERENCES users(id), -- Внешний ключ на вашу таблицу пользователей
-    telegram_chat_id BIGINT NOT NULL UNIQUE, -- Telegram ID чата
+    user_id UUID PRIMARY KEY REFERENCES users(id),
+    telegram_chat_id BIGINT NOT NULL UNIQUE,
     created_at TIMESTAMP DEFAULT NOW()
 );
 
--- Связь пользователя с Email (если не хранится в основной таблице users)
 CREATE TABLE user_email_links (
     user_id UUID PRIMARY KEY REFERENCES users(id),
-    email VARCHAR(255) NOT NULL UNIQUE, -- или просто используйте поле email в таблице users
+    email VARCHAR(255) NOT NULL UNIQUE,
     created_at TIMESTAMP DEFAULT NOW()
 );
