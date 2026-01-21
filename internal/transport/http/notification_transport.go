@@ -1,27 +1,34 @@
 package httpt
 
 import (
+	"context"
+	"delayednotifier/internal/entity"
+	"delayednotifier/internal/service"
+
 	"github.com/gin-gonic/gin"
-	"github.com/ridusm/delayednotifier/pkg/logger"
-	"github.com/ridusm/delayednotifier/pkg/metric"
+	"github.com/google/uuid"
+	"github.com/wb-go/wbf/logger"
 )
 
-type Handler struct {
-	svc     *service.Notification
-	log     logger.Logger
-	metrics metric.HTTP
-	router  *gin.Engine
+type NotifyService interface {
+	Create(ctx context.Context, req CreateNotificationRequest) (*entity.Notification, error)
+	GetStatus(ctx context.Context, id uuid.UUID) (*entity.Notification, error)
+	Cancel(ctx context.Context, id uuid.UUID) error
 }
 
-func NewNotificationHandler(
-	svc *service.Notification,
+type NotifyHandler struct {
+	svc    *service.NotifyService
+	log    logger.Logger
+	router *gin.Engine
+}
+
+func NewNotifyHandler(
+	svc *service.NotifyService,
 	log logger.Logger,
-	metrics metric.HTTP,
-) *Handler {
-	h := &Handler{
-		svc:     svc,
-		log:     log,
-		metrics: metrics,
+) *NotifyHandler {
+	h := &NotifyHandler{
+		svc: svc,
+		log: log,
 	}
 
 	router := gin.New()
@@ -40,6 +47,6 @@ func NewNotificationHandler(
 	return h
 }
 
-func (h *OrderHandler) Engine() *gin.Engine {
+func (h *NotifyHandler) Engine() *gin.Engine {
 	return h.router
 }

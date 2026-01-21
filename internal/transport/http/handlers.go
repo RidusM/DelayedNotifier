@@ -1,18 +1,115 @@
 package httpt
 
 import (
-	"context"
+	"delayednotifier/internal/entity"
+	"delayednotifier/internal/service"
+	"encoding/json"
 	"net/http"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/ridusm/delayednotifier/pkg/logger"
+	"github.com/wb-go/wbf/logger"
 )
 
 const (
 	_defaultContextTimeout = 500 * time.Millisecond
 )
+
+// @Summary Создать уведомление
+// @Description Планирует отправку уведомления на указанное время
+// @Tags Notification
+// @Accept json
+// @Produce json
+// @Param request body CreateNotificationRequest true "Данные уведомления"
+// @Success 201 {object} CreateNotificationResponse "Уведомление создано"
+// @Failure 400 {object} ErrorResponse "Ошибка валидации"
+// @Failure 500 {object} ErrorResponse "Внутренняя ошибка"
+// @Router /notify [post]
+func (h *NotifyHandler) CreateNotification(c *gin.Context) {
+	const op = "transport.http.NotifyHandler.CreateNotification"
+	ctx := c.Request.Context()
+	log := h.log.Ctx(ctx)
+
+	log.LogAttrs(ctx, logger.InfoLevel, "create notification request received",
+		logger.String("op", op),
+		logger.String("method", c.Request.Method),
+		logger.String("path", c.Request.URL.Path),
+		logger.String("remote_addr", c.Request.RemoteAddr),
+	)
+
+	var req CreateNotificationRequest
+	if err := json.NewDecoder(c.Request.Body).Decode(&req); err != nil {
+		log.LogAttrs(ctx, logger.ErrorLevel, "invalid request body",
+			logger.String("op", op),
+			logger.Any("error", err),
+		)
+		h.respondError(c, http.StatusBadRequest, "invalid_request", "Invalid JSON format", err)
+		return
+	}
+
+	userID, err := uuid.Parse(req.UserID)
+	if err != nil {
+		log.LogAttrs(ctx, logger.ErrorLevel, "invalid user_id",
+			logger.String("op", op),
+			logger.String("user_id", req.UserID),
+		)
+		h.respondError(c, http.StatusBadRequest, "invalid_user_id", "User ID must be a valid UUID", err)
+		return
+	}
+
+	channel := entity.Channel(req.Channel)
+	if !isValidChannel(channel) {
+		log.LogAttrs(ctx, logger.ErrorLevel, "invalid channel",
+			logger.String("op", op),
+			logger.String("channel", req.Channel),
+		)
+		h.respondError(c, http.StatusBadRequest, "invalid_channel",
+			"Channel must be one of: telegram, email, sms, push", nil)
+		return
+	}
+
+	if req.Payload == "" {
+		h.respondError(c, http.StatusBadRequest, "empty_payload", "Payload cannot be empty", nil)
+		return
+	}
+
+	if req.ScheduledAt.IsZero() {
+		h.respondError(c, http.StatusBadRequest, "invalid_scheduled_at", "Scheduled time is required", nil)
+		return
+	}
+
+	serviceReq := service.CreateNotificationRequest{
+		UserID:      userID,
+		Channel:     channel,
+		Payload:     req.Payload,
+		ScheduledAt: req.ScheduledAt,
+	}
+
+	notification, err := h.svc.Create(ctx, serviceReq)
+	if err != nil {
+		h.handleServiceError(c, ctx, op, err)
+		return
+	}
+
+	response := CreateNotificationResponse{
+		ID:          notification.ID.String(),
+		UserID:      notification.UserID.String(),
+		Channel:     string(notification.Channel),
+		Status:      notification.Status.String(),
+		ScheduledAt: notification.ScheduledAt,
+		CreatedAt:   notification.CreatedAt,
+		Message:     "Notification created successfully",
+	}
+
+	log.LogAttrs(ctx, logger.InfoLevel, "notification created successfully",
+		logger.String("op", op),
+		logger.String("id", response.ID),
+		logger.String("channel", response.Channel),
+	)
+
+	h.respondJSON(c, http.StatusCreated, response)
+}
 
 // @Summary Получить статус уведомления
 // @Description Возвращает статус уведомления по уникальному идентификатору
@@ -20,91 +117,129 @@ const (
 // @Accept json
 // @Produce json
 // @Param id path string true "Уникальный идентификатор уведомления"
-// @Success 200 {object} entity.Notification "Успешный ответ с статусом уведомления"
-// @Failure 400 {object} httpt.ErrorResponse "Неверный формат notify_id"
-// @Failure 404 {object} httpt.ErrorResponse "Уведомление не найдено"
-// @Failure 500 {object} httpt.ErrorResponse "Внутренняя ошибка сервера"
+// @Success 200 {object} NotificationStatusResponse "Успешный ответ с статусом уведомления"
+// @Failure 400 {object} ErrorResponse "Неверный формат notify_id"
+// @Failure 404 {object} ErrorResponse "Уведомление не найдено"
+// @Failure 500 {object} ErrorResponse "Внутренняя ошибка сервера"
 // @Router /notify/{id} [get]
-func (h *Handler) getNotifyHandler(c *gin.Context) {
-	const op = "transport.getNotifyHandler"
+func (h *NotifyHandler) GetStatus(c *gin.Context) {
+	const op = "transport.http.NotifyHandler.GetStatus"
+	ctx := c.Request.Context()
+	log := h.log.Ctx(ctx)
 
-	log := h.log.Ctx(c.Request.Context())
-	notifyUIDStr := c.Param("notify_uid")
-
-	notifyUID, err := uuid.Parse(notifyUIDStr)
+	idStr := c.Param("id")
+	id, err := uuid.Parse(idStr)
 	if err != nil {
-		h.handleInvalidUUID(c, op, notifyUIDStr)
+		log.LogAttrs(ctx, logger.ErrorLevel, "invalid notification id",
+			logger.String("op", op),
+			logger.String("id", idStr),
+		)
+		h.respondError(c, http.StatusBadRequest, "invalid_id", "Invalid notification ID format", err)
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(c.Request.Context(), _defaultContextTimeout)
-	defer cancel()
-
-	notify, err := h.svc.GetNotify(ctx, notifyUID)
-	if err != nil {
-		h.handleServiceError(c, err, op)
-		return
-	}
-
-	log.LogAttrs(ctx, logger.InfoLevel, "notify retrieved successfully",
-		logger.String("notify_uid", notifyUIDStr),
+	log.LogAttrs(ctx, logger.InfoLevel, "get status request received",
+		logger.String("op", op),
+		logger.String("id", id.String()),
 	)
 
-	c.JSON(http.StatusOK, notify)
+	notification, err := h.svc.GetStatus(ctx, id)
+	if err != nil {
+		h.handleServiceError(c, ctx, op, err)
+		return
+	}
+
+	response := NotificationStatusResponse{
+		ID:          notification.ID.String(),
+		UserID:      notification.UserID.String(),
+		Channel:     string(notification.Channel),
+		Status:      notification.Status.String(),
+		Payload:     notification.Payload,
+		ScheduledAt: notification.ScheduledAt,
+		SentAt:      notification.SentAt,
+		RetryCount:  notification.RetryCount,
+		LastError:   notification.LastError,
+		CreatedAt:   notification.CreatedAt,
+	}
+
+	log.LogAttrs(ctx, logger.InfoLevel, "status retrieved successfully",
+		logger.String("op", op),
+		logger.String("id", id.String()),
+		logger.String("status", notification.Status.String()),
+	)
+
+	h.respondJSON(c, http.StatusOK, response)
 }
 
-func (h *Handler) postNotifyHandler(c *gin.Context) {
-	const op = "transport.postNotifyHandler"
+// @Summary Отменить уведомление
+// @Description Отменяет запланированное уведомление
+// @Tags Notification
+// @Accept json
+// @Produce json
+// @Param id path string true "Уникальный идентификатор уведомления"
+// @Success 200 {object} SuccessResponse "Успешный ответ"
+// @Failure 400 {object} ErrorResponse "Неверный формат notify_id"
+// @Failure 404 {object} ErrorResponse "Уведомление не найдено"
+// @Failure 409 {object} ErrorResponse "Уведомление уже отправлено или отменено"
+// @Failure 500 {object} ErrorResponse "Внутренняя ошибка сервера"
+// @Router /notify/{id} [delete]
+func (h *NotifyHandler) Cancel(c *gin.Context) {
+	const op = "transport.http.NotifyHandler.Cancel"
+	ctx := c.Request.Context()
+	log := h.log.Ctx(ctx)
 
-	log := h.log.Ctx(c.Request.Context())
-	notifyUIDStr := c.Param("notify_uid")
-
-	notifyUID, err := uuid.Parse(notifyUIDStr)
+	idStr := c.Param("id")
+	id, err := uuid.Parse(idStr)
 	if err != nil {
-		h.handleInvalidUUID(c, op, notifyUIDStr)
+		log.LogAttrs(ctx, logger.ErrorLevel, "invalid notification id",
+			logger.String("op", op),
+			logger.String("id", idStr),
+		)
+		h.respondError(c, http.StatusBadRequest, "invalid_id", "Invalid notification ID format", err)
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(c.Request.Context(), _defaultContextTimeout)
-	defer cancel()
-
-	notify, err := h.svc.CreateNotify(ctx, notifyUID)
-	if err != nil {
-		h.handleServiceError(c, err, op)
-		return
-	}
-
-	log.LogAttrs(ctx, logger.InfoLevel, "notify retrieved successfully",
-		logger.String("notify_uid", notifyUIDStr),
+	log.LogAttrs(ctx, logger.InfoLevel, "cancel request received",
+		logger.String("op", op),
+		logger.String("id", id.String()),
 	)
 
-	c.JSON(http.StatusOK, notify)
+	if err := h.svc.Cancel(ctx, id); err != nil {
+		h.handleServiceError(c, ctx, op, err)
+		return
+	}
+
+	log.LogAttrs(ctx, logger.InfoLevel, "notification cancelled successfully",
+		logger.String("op", op),
+		logger.String("id", id.String()),
+	)
+
+	response := SuccessResponse{
+		Message: "Notification cancelled successfully",
+	}
+	h.respondJSON(c, http.StatusOK, response)
 }
 
-func (h *Handler) deleteNotifyHandler(c *gin.Context) {
-	const op = "transport.http.deleteNotifyHandler"
-
-	log := h.log.Ctx(c.Request.Context())
-	notifyUIDStr := c.Param("notify_uid")
-
-	notifyUID, err := uuid.Parse(notifyUIDStr)
-	if err != nil{
-		h.handleInvalidUUID(c, op, notifyUIDStr)
-		return
+// Health обрабатывает GET /health
+func (h *NotifyHandler) Health(c *gin.Context) {
+	response := map[string]string{
+		"status": "ok",
+		"time":   time.Now().Format(time.RFC3339),
 	}
+	h.respondJSON(c, http.StatusOK, response)
+}
 
-	ctx, cancel := context.WithTimeout(c.Request.Context(), _defaultContextTimeout)
-	defer cancel()
+func (h *NotifyHandler) respondJSON(c *gin.Context, status int, data interface{}) {
+	c.JSON(status, data)
+}
 
-	notify, err := h.svc.DeleteNotify(ctx, notifyUID)
-	if err != nil{
-		h.handleServiceError(c, err, op)
-		return
+func (h *NotifyHandler) respondError(c *gin.Context, status int, code, message string, err error) {
+	response := ErrorResponse{
+		Error: message,
+		Code:  code,
 	}
-
-	log.LogAttrs(ctx, logger.InfoLevel, "notify deleted successfully",
-		logger.String("notify_uid", notifyUIDStr),
-	)
-
-	c.JSON(http.StatusOK, notify)
+	if err != nil {
+		response.Details = err.Error()
+	}
+	h.respondJSON(c, status, response)
 }

@@ -18,19 +18,16 @@ import (
 // @license.url     https://github.com/aws/mit-0
 // @host            localhost:8080
 // @BasePath        /
-func (h *Handler) setupRoutes() {
-	h.router.GET("/health", func(c *gin.Context) {
-		c.Status(http.StatusOK)
-	})
+func (h *NotifyHandler) setupRoutes() {
+	h.router.GET("/health", h.Health)
+
+	h.router.POST("/notify", h.CreateNotification)
+	h.router.GET("/notify/:id", h.GetStatus)
+	h.router.DELETE("/notify/:id", h.Cancel)
 
 	h.router.GET("/", func(c *gin.Context) {
 		c.HTML(http.StatusOK, "index.html", gin.H{})
 	})
-
-	orders := h.router.Group("/orders")
-	{
-		orders.GET("/:order_uid", h.getHandler)
-	}
 
 	h.router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 }

@@ -2,60 +2,70 @@ package httpt
 
 import (
 	"context"
+	"delayednotifier/internal/entity"
 	"errors"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/ridusm/delayednotifier/internal/entity"
-	"github.com/ridusm/delayednotifier/pkg/logger"
+	"github.com/wb-go/wbf/logger"
 )
 
-// пока заглушка с l0
-func (h *Handler) handleServiceError(c *gin.Context, err error, op string) {
-	log := h.log.Ctx(c.Request.Context())
-
-	log.LogAttrs(c.Request.Context(), logger.ErrorLevel, op+" failed",
-		logger.Any("error", err),
-		logger.String("remote_addr", c.ClientIP()),
-		logger.String("user_agent", c.Request.UserAgent()),
-	)
+func (h *NotifyHandler) handleServiceError(c *gin.Context, ctx context.Context, op string, err error) {
+	log := h.log.Ctx(ctx)
 
 	switch {
-	case errors.Is(err, entity.ErrConfigPathNotSet):
-		c.JSON(
-			http.StatusBadRequest,
-			gin.H{"error": "Invalid notification data. Check send data."},
-		)
-	case errors.Is(err, entity.ErrConfigPathNotSet):
-		log.LogAttrs(c.Request.Context(), logger.WarnLevel, "order not found",
-			logger.String("order_uid", c.Param("order_uid")),
-			logger.String("client_ip", c.ClientIP()),
-		)
-		c.JSON(http.StatusNotFound, gin.H{"error": "Order not found"})
-	case errors.Is(err, context.DeadlineExceeded):
-		log.LogAttrs(c.Request.Context(), logger.WarnLevel, "request timeout",
-			logger.String("path", c.Request.URL.Path),
-			logger.String("client_ip", c.ClientIP()),
-		)
-		c.JSON(http.StatusGatewayTimeout, gin.H{"error": "Request timed out"})
-	default:
-		log.LogAttrs(c.Request.Context(), logger.ErrorLevel, "internal server error",
+	case errors.Is(err, entity.ErrNotificationNotFound):
+		log.LogAttrs(ctx, logger.WarnLevel, "notification not found",
+			logger.String("op", op),
 			logger.Any("error", err),
-			logger.String("path", c.Request.URL.Path),
-			logger.String("client_ip", c.ClientIP()),
 		)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal service error"})
+		h.respondError(c, http.StatusNotFound, "not_found", "Notification not found", err)
+
+	case errors.Is(err, entity.ErrNotificationAlreadySent):
+		log.LogAttrs(ctx, logger.WarnLevel, "notification already sent",
+			logger.String("op", op),
+			logger.Any("error", err),
+		)
+		h.respondError(c, http.StatusConflict, "already_sent",
+			"Cannot cancel: notification has already been sent", err)
+
+	case errors.Is(err, entity.ErrNotificationCancelled):
+		log.LogAttrs(ctx, logger.WarnLevel, "notification already cancelled",
+			logger.String("op", op),
+			logger.Any("error", err),
+		)
+		h.respondError(c, http.StatusConflict, "already_cancelled",
+			"Notification is already cancelled", err)
+
+	case errors.Is(err, entity.ErrInvalidData):
+		log.LogAttrs(ctx, logger.WarnLevel, "invalid data",
+			logger.String("op", op),
+			logger.Any("error", err),
+		)
+		h.respondError(c, http.StatusBadRequest, "invalid_data", "Invalid input data", err)
+
+	case errors.Is(err, entity.ErrConflictingData):
+		log.LogAttrs(ctx, logger.WarnLevel, "conflicting data",
+			logger.String("op", op),
+			logger.Any("error", err),
+		)
+		h.respondError(c, http.StatusConflict, "conflict", "Data conflict occurred", err)
+
+	default:
+		log.LogAttrs(ctx, logger.ErrorLevel, "internal server error",
+			logger.String("op", op),
+			logger.Any("error", err),
+		)
+		h.respondError(c, http.StatusInternalServerError, "internal_error",
+			"Internal server error occurred", err)
 	}
 }
 
-func (h *Handler) handleInvalidUUID(c *gin.Context, op, value string) {
-	log := h.log.Ctx(c.Request.Context())
-
-	log.LogAttrs(c.Request.Context(), logger.WarnLevel, "invalid notification UUID format",
-		logger.String("op", op),
-		logger.String("value", value),
-		logger.String("remote_addr", c.ClientIP()),
-	)
-
-	c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid notification UUID format"})
+func isValidChannel(channel entity.Channel) bool {
+	switch channel {
+	case entity.Email, entity.Telegram:
+		return true
+	default:
+		return false
+	}
 }

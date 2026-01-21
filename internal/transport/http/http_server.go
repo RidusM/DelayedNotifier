@@ -2,6 +2,7 @@ package httpt
 
 import (
 	"context"
+	"delayednotifier/internal/config"
 	"fmt"
 	"net"
 	"net/http"
@@ -10,8 +11,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/ridusm/delayednotifier/internal/config"
-	"github.com/ridusm/delayednotifier/pkg/logger"
+	"github.com/wb-go/wbf/logger"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -41,7 +41,7 @@ func NewHTTPServer(
 }
 
 func (s *HTTPServer) Start(ctx context.Context) error {
-	const op = "transport.http.http_server.Start"
+	const op = "transport.http.HTTPServer.Start"
 
 	eg, ctx := errgroup.WithContext(ctx)
 
@@ -79,7 +79,7 @@ func (s *HTTPServer) Stop(ctx context.Context) error {
 	s.log.Infow("shutting down HTTP server")
 	if err := s.server.Shutdown(shutdownCtx); err != nil {
 		s.log.Errorw("HTTP server forced shutdown", "error", err)
-		return fmt.Errorf("transport.http.http_server.Stop: server shutdown: %w", err)
+		return fmt.Errorf("transport.http.HTTPServer.Stop: server shutdown: %w", err)
 	}
 	s.log.Infow("HTTP server stopped gracefully")
 	return nil

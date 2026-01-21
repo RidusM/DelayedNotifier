@@ -2,14 +2,16 @@ package app
 
 import (
 	"context"
+	"delayednotifier/internal/config"
 	"fmt"
 	"net"
 	"net/http"
 
-	"github.com/bytedance/gopkg/util/logger"
-	"github.com/golang-migrate/migrate/v4/database/postgres"
-	uuid "github.com/jackc/pgtype/ext/gofrs-uuid"
-	"github.com/ridusm/delayednotifier/internal/config"
+	"github.com/golang-migrate/migrate/database/postgres"
+	"github.com/ridusm/delayednotifier/pkg/metric"
+	uuid "github.com/satori/go.uuid"
+	"github.com/wb-go/wbf/dbpg/pgx-driver/transaction"
+	"github.com/wb-go/wbf/logger"
 	"golang.org/x/sync/errgroup"
 )
 
