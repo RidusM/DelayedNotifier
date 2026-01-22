@@ -11,29 +11,32 @@ type NotificationSender interface {
 }
 
 type MultiSender struct {
-	telegramSender NotificationSender
-	emailSender    NotificationSender
+	telegram NotificationSender
+	email    NotificationSender
 }
 
-func NewMultiSender(tg, email, push NotificationSender) *MultiSender {
+func NewMultiSender(telegram, email NotificationSender) *MultiSender {
 	return &MultiSender{
-		telegramSender: tg,
-		emailSender:    email,
+		telegram: telegram,
+		email:    email,
 	}
 }
 
 func (s *MultiSender) Send(ctx context.Context, notification entity.Notification) error {
 	switch notification.Channel {
 	case entity.Telegram:
-		if s.telegramSender != nil {
-			return s.telegramSender.Send(ctx, notification)
+		if s.telegram == nil {
+			return fmt.Errorf("telegram sender not configured")
 		}
+		return s.telegram.Send(ctx, notification)
+
 	case entity.Email:
-		if s.emailSender != nil {
-			return s.emailSender.Send(ctx, notification)
+		if s.email == nil {
+			return fmt.Errorf("email sender not configured")
 		}
+		return s.email.Send(ctx, notification)
+
 	default:
 		return fmt.Errorf("unsupported channel: %s", notification.Channel)
 	}
-	return nil
 }
