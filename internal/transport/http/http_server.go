@@ -2,7 +2,6 @@ package httpt
 
 import (
 	"context"
-	"delayednotifier/internal/config"
 	"fmt"
 	"net"
 	"net/http"
@@ -10,6 +9,8 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
+
+	"delayednotifier/internal/config"
 
 	"github.com/wb-go/wbf/logger"
 	"golang.org/x/sync/errgroup"

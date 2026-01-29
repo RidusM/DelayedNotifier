@@ -1,16 +1,17 @@
 package httpt
 
 import (
-	"context"
-	"delayednotifier/internal/entity"
 	"errors"
 	"net/http"
+
+	"delayednotifier/internal/entity"
 
 	"github.com/gin-gonic/gin"
 	"github.com/wb-go/wbf/logger"
 )
 
-func (h *NotifyHandler) handleServiceError(c *gin.Context, ctx context.Context, op string, err error) {
+func (h *NotifyHandler) handleServiceError(c *gin.Context, op string, err error) {
+	ctx := c.Request.Context()
 	log := h.log.Ctx(ctx)
 
 	switch {
@@ -44,6 +45,14 @@ func (h *NotifyHandler) handleServiceError(c *gin.Context, ctx context.Context, 
 		)
 		h.respondError(c, http.StatusBadRequest, "invalid_data", "Invalid input data", err)
 
+	case errors.Is(err, entity.ErrRecipientNotFound):
+		log.LogAttrs(ctx, logger.WarnLevel, "recipient not found",
+			logger.String("op", op),
+			logger.Any("error", err),
+		)
+		h.respondError(c, http.StatusBadRequest, "recipient_not_found",
+			"Recipient identifier not found for this user", err)
+
 	case errors.Is(err, entity.ErrConflictingData):
 		log.LogAttrs(ctx, logger.WarnLevel, "conflicting data",
 			logger.String("op", op),
@@ -62,10 +71,5 @@ func (h *NotifyHandler) handleServiceError(c *gin.Context, ctx context.Context, 
 }
 
 func isValidChannel(channel entity.Channel) bool {
-	switch channel {
-	case entity.Email, entity.Telegram:
-		return true
-	default:
-		return false
-	}
+	return channel.IsValid()
 }

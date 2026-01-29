@@ -2,10 +2,11 @@ package repository
 
 import (
 	"context"
-	"delayednotifier/internal/entity"
 	"errors"
 	"fmt"
 	"time"
+
+	"delayednotifier/internal/entity"
 
 	"github.com/Masterminds/squirrel"
 	"github.com/google/uuid"
@@ -31,8 +32,8 @@ func (r *NotifyRepository) scanNotification(scanner rowScanner) (*entity.Notific
 	var n entity.Notification
 	var sentAt pgtype.Timestamptz
 	var lastError pgtype.Text
-	var retryCount pgtype.Int4
-	var recipientIdentifier pgtype.Text // <-- НОВОЕ
+	var retryCount pgtype.Uint32
+	var recipientIdentifier pgtype.Text
 
 	err := scanner.Scan(
 		&n.ID,
@@ -45,10 +46,10 @@ func (r *NotifyRepository) scanNotification(scanner rowScanner) (*entity.Notific
 		&retryCount,
 		&lastError,
 		&n.CreatedAt,
-		&recipientIdentifier, // <-- НОВОЕ
+		&recipientIdentifier,
 	)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("repository.NotifyRepository.scanNotification: %w", err)
 	}
 
 	if sentAt.Valid {
@@ -58,9 +59,9 @@ func (r *NotifyRepository) scanNotification(scanner rowScanner) (*entity.Notific
 		n.LastError = lastError.String
 	}
 	if retryCount.Valid {
-		n.RetryCount = int(retryCount.Int32)
+		n.RetryCount = retryCount.Uint32
 	}
-	if recipientIdentifier.Valid { // <-- НОВОЕ
+	if recipientIdentifier.Valid {
 		n.RecipientIdentifier = recipientIdentifier.String
 	}
 
@@ -71,7 +72,11 @@ type rowScanner interface {
 	Scan(dest ...any) error
 }
 
-func (r *NotifyRepository) Create(ctx context.Context, qe pgxdriver.QueryExecuter, notify entity.Notification) (*entity.Notification, error) {
+func (r *NotifyRepository) Create(
+	ctx context.Context,
+	qe pgxdriver.QueryExecuter,
+	notify entity.Notification,
+) (*entity.Notification, error) {
 	const op = "repository.NotifyRepository.Create"
 
 	var err error
@@ -85,8 +90,8 @@ func (r *NotifyRepository) Create(ctx context.Context, qe pgxdriver.QueryExecute
 	}
 
 	sql, args, err := r.db.Insert("notifications").
-		Columns("id", "user_id", "channel", "payload", "scheduled_at", "status", "created_at", "recipient_identifier").                                    // <-- Добавлено recipient_identifier
-		Values(notify.ID, notify.UserID, notify.Channel, notify.Payload, notify.ScheduledAt, notify.Status, notify.CreatedAt, notify.RecipientIdentifier). // <-- Добавлено notify.RecipientIdentifier
+		Columns("id", "user_id", "channel", "payload", "scheduled_at", "status", "created_at", "recipient_identifier").
+		Values(notify.ID, notify.UserID, notify.Channel, notify.Payload, notify.ScheduledAt, notify.Status, notify.CreatedAt, notify.RecipientIdentifier).
 		ToSql()
 	if err != nil {
 		return nil, fmt.Errorf("%s: building query: %w", op, err)
@@ -104,7 +109,11 @@ func (r *NotifyRepository) Create(ctx context.Context, qe pgxdriver.QueryExecute
 	return &notify, nil
 }
 
-func (r *NotifyRepository) GetByID(ctx context.Context, qe pgxdriver.QueryExecuter, id uuid.UUID) (*entity.Notification, error) {
+func (r *NotifyRepository) GetByID(
+	ctx context.Context,
+	qe pgxdriver.QueryExecuter,
+	id uuid.UUID,
+) (*entity.Notification, error) {
 	const op = "repository.NotifyRepository.GetByID"
 
 	sql, args, err := r.db.Select(notificationColumns).
@@ -126,7 +135,11 @@ func (r *NotifyRepository) GetByID(ctx context.Context, qe pgxdriver.QueryExecut
 	return n, nil
 }
 
-func (r *NotifyRepository) GetForProcess(ctx context.Context, qe pgxdriver.QueryExecuter, limit uint64) ([]entity.Notification, error) {
+func (r *NotifyRepository) GetForProcess(
+	ctx context.Context,
+	qe pgxdriver.QueryExecuter,
+	limit uint64,
+) ([]entity.Notification, error) {
 	const op = "repository.NotifyRepository.GetForProcess"
 
 	sql, args, err := r.db.Select(notificationColumns).
@@ -149,9 +162,9 @@ func (r *NotifyRepository) GetForProcess(ctx context.Context, qe pgxdriver.Query
 
 	var results []entity.Notification
 	for rows.Next() {
-		n, err := r.scanNotification(rows)
-		if err != nil {
-			return nil, fmt.Errorf("%s: scan row: %w", op, err)
+		n, nErr := r.scanNotification(rows)
+		if nErr != nil {
+			return nil, fmt.Errorf("%s: scan row: %w", op, nErr)
 		}
 		results = append(results, *n)
 	}
@@ -163,7 +176,13 @@ func (r *NotifyRepository) GetForProcess(ctx context.Context, qe pgxdriver.Query
 	return results, nil
 }
 
-func (r *NotifyRepository) UpdateStatus(ctx context.Context, qe pgxdriver.QueryExecuter, id uuid.UUID, status entity.Status, lastErr *string) error {
+func (r *NotifyRepository) UpdateStatus(
+	ctx context.Context,
+	qe pgxdriver.QueryExecuter,
+	id uuid.UUID,
+	status entity.Status,
+	lastErr *string,
+) error {
 	const op = "repository.NotifyRepository.UpdateStatus"
 
 	update := r.db.Update("notifications").
@@ -177,10 +196,15 @@ func (r *NotifyRepository) UpdateStatus(ctx context.Context, qe pgxdriver.QueryE
 	}
 
 	switch status {
+	case entity.StatusWaiting:
+	case entity.StatusInProcess:
 	case entity.StatusSent:
 		update = update.Set("sent_at", squirrel.Expr("NOW()"))
 	case entity.StatusFailed:
 		update = update.Set("retry_count", squirrel.Expr("COALESCE(retry_count, 0) + 1"))
+	case entity.StatusCancelled:
+	default:
+		return fmt.Errorf("unknown status: %s", status)
 	}
 
 	sql, args, err := update.ToSql()
@@ -200,7 +224,12 @@ func (r *NotifyRepository) UpdateStatus(ctx context.Context, qe pgxdriver.QueryE
 	return nil
 }
 
-func (r *NotifyRepository) RescheduleNotification(ctx context.Context, qe pgxdriver.QueryExecuter, id uuid.UUID, newScheduledAt time.Time) error {
+func (r *NotifyRepository) RescheduleNotification(
+	ctx context.Context,
+	qe pgxdriver.QueryExecuter,
+	id uuid.UUID,
+	newScheduledAt time.Time,
+) error {
 	const op = "repository.NotifyRepository.RescheduleNotification"
 
 	sql, args, err := r.db.Update("notifications").
@@ -225,7 +254,11 @@ func (r *NotifyRepository) RescheduleNotification(ctx context.Context, qe pgxdri
 	return nil
 }
 
-func (r *NotifyRepository) GetTelegramChatIDByUserID(ctx context.Context, qe pgxdriver.QueryExecuter, userID uuid.UUID) (int64, error) {
+func (r *NotifyRepository) GetTelegramChatIDByUserID(
+	ctx context.Context,
+	qe pgxdriver.QueryExecuter,
+	userID uuid.UUID,
+) (int64, error) {
 	const op = "repository.NotifyRepository.GetTelegramChatIDByUserID"
 
 	var chatID int64
@@ -248,7 +281,11 @@ func (r *NotifyRepository) GetTelegramChatIDByUserID(ctx context.Context, qe pgx
 	return chatID, nil
 }
 
-func (r *NotifyRepository) GetUserEmailByUserID(ctx context.Context, qe pgxdriver.QueryExecuter, userID uuid.UUID) (string, error) {
+func (r *NotifyRepository) GetUserEmailByUserID(
+	ctx context.Context,
+	qe pgxdriver.QueryExecuter,
+	userID uuid.UUID,
+) (string, error) {
 	const op = "repository.NotifyRepository.GetUserEmailByUserID"
 
 	var email string

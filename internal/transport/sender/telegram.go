@@ -1,11 +1,11 @@
-// sender/telegram.go
 package sender
 
 import (
 	"context"
-	"delayednotifier/internal/entity"
 	"fmt"
 	"strconv"
+
+	"delayednotifier/internal/entity"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/wb-go/wbf/logger"
@@ -39,7 +39,7 @@ func (s *TelegramSender) Send(ctx context.Context, notification entity.Notificat
 	}
 
 	msg := tgbotapi.NewMessage(chatID, notification.Payload)
-	msg.ParseMode = "HTML" // Поддержка HTML форматирования
+	msg.ParseMode = "HTML"
 
 	s.log.LogAttrs(ctx, logger.DebugLevel, "sending telegram message",
 		logger.Int64("chat_id", chatID),

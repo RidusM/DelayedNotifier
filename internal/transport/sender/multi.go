@@ -2,8 +2,10 @@ package sender
 
 import (
 	"context"
-	"delayednotifier/internal/entity"
+	"errors"
 	"fmt"
+
+	"delayednotifier/internal/entity"
 )
 
 type NotificationSender interface {
@@ -23,20 +25,26 @@ func NewMultiSender(telegram, email NotificationSender) *MultiSender {
 }
 
 func (s *MultiSender) Send(ctx context.Context, notification entity.Notification) error {
+	const op = "transport.sender.MultiSender"
 	switch notification.Channel {
 	case entity.Telegram:
 		if s.telegram == nil {
-			return fmt.Errorf("telegram sender not configured")
+			return errors.New("telegram sender not configured")
 		}
-		return s.telegram.Send(ctx, notification)
-
+		err := s.telegram.Send(ctx, notification)
+		if err != nil {
+			return fmt.Errorf("%s: %w", op, err)
+		}
 	case entity.Email:
 		if s.email == nil {
-			return fmt.Errorf("email sender not configured")
+			return errors.New("email sender not configured")
 		}
-		return s.email.Send(ctx, notification)
-
+		err := s.email.Send(ctx, notification)
+		if err != nil {
+			return fmt.Errorf("%s: %w", op, err)
+		}
 	default:
-		return fmt.Errorf("unsupported channel: %s", notification.Channel)
+		return errors.New("unsupported channel")
 	}
+	return nil
 }

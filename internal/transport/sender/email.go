@@ -2,21 +2,20 @@ package sender
 
 import (
 	"context"
-	"delayednotifier/internal/entity"
 	"fmt"
+
+	"delayednotifier/internal/entity"
 
 	"github.com/wb-go/wbf/logger"
 	"gopkg.in/gomail.v2"
 )
 
-// EmailSender отправляет уведомления через Email
 type EmailSender struct {
 	dialer *gomail.Dialer
 	from   string
 	log    logger.Logger
 }
 
-// NewEmailSender создает новый EmailSender
 func NewEmailSender(smtpHost string, smtpPort int, username, password, from string, log logger.Logger) *EmailSender {
 	dialer := gomail.NewDialer(smtpHost, smtpPort, username, password)
 
@@ -33,7 +32,6 @@ func NewEmailSender(smtpHost string, smtpPort int, username, password, from stri
 	}
 }
 
-// Send отправляет email уведомление
 func (s *EmailSender) Send(ctx context.Context, notification entity.Notification) error {
 	email := gomail.NewMessage()
 	email.SetHeader("From", s.from)

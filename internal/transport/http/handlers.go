@@ -1,19 +1,17 @@
+// nolint: revive,staticcheck
 package httpt
 
 import (
-	"delayednotifier/internal/entity"
-	"delayednotifier/internal/service"
 	"encoding/json"
 	"net/http"
 	"time"
 
+	"delayednotifier/internal/entity"
+	"delayednotifier/internal/service"
+
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/wb-go/wbf/logger"
-)
-
-const (
-	_defaultContextTimeout = 500 * time.Millisecond
 )
 
 // @Summary Создать уведомление
@@ -88,7 +86,7 @@ func (h *NotifyHandler) CreateNotification(c *gin.Context) {
 
 	notification, err := h.svc.Create(ctx, serviceReq)
 	if err != nil {
-		h.handleServiceError(c, ctx, op, err)
+		h.handleServiceError(c, op, err)
 		return
 	}
 
@@ -145,7 +143,7 @@ func (h *NotifyHandler) GetStatus(c *gin.Context) {
 
 	notification, err := h.svc.GetStatus(ctx, id)
 	if err != nil {
-		h.handleServiceError(c, ctx, op, err)
+		h.handleServiceError(c, op, err)
 		return
 	}
 
@@ -204,8 +202,8 @@ func (h *NotifyHandler) Cancel(c *gin.Context) {
 		logger.String("id", id.String()),
 	)
 
-	if err := h.svc.Cancel(ctx, id); err != nil {
-		h.handleServiceError(c, ctx, op, err)
+	if cancelErr := h.svc.Cancel(ctx, id); cancelErr != nil {
+		h.handleServiceError(c, op, cancelErr)
 		return
 	}
 

@@ -6,16 +6,15 @@ CREATE TABLE IF NOT EXISTS notifications (
     user_id UUID NOT NULL,
     channel VARCHAR(20) NOT NULL CHECK (channel IN ('telegram', 'email', 'sms', 'push')),
     payload TEXT NOT NULL,
-    recipient_identifier VARCHAR(255) NOT NULL, -- email или chat_id
+    recipient_identifier VARCHAR(255) NOT NULL,
     scheduled_at TIMESTAMPTZ NOT NULL,
     sent_at TIMESTAMPTZ,
     status VARCHAR(20) NOT NULL CHECK (status IN ('waiting', 'in_process', 'sent', 'failed', 'cancelled')),
-    retry_count INTEGER DEFAULT 0,
+    retry_count SERIAL DEFAULT 0,
     last_error TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Индексы для производительности
 CREATE INDEX idx_notifications_status_scheduled
     ON notifications(status, scheduled_at)
     WHERE status = 'waiting';
@@ -29,7 +28,6 @@ CREATE INDEX idx_notifications_created_status
 CREATE INDEX idx_notifications_channel
     ON notifications(channel);
 
--- Комментарии
 COMMENT ON TABLE notifications IS 'Таблица отложенных уведомлений';
 COMMENT ON COLUMN notifications.id IS 'Уникальный идентификатор уведомления (UUID v7)';
 COMMENT ON COLUMN notifications.user_id IS 'ID пользователя-получателя';
@@ -43,11 +41,6 @@ COMMENT ON COLUMN notifications.retry_count IS 'Количество попыт�
 COMMENT ON COLUMN notifications.last_error IS 'Последняя ошибка при отправке';
 COMMENT ON COLUMN notifications.created_at IS 'Время создания записи';
 
--- =====================================================
--- migrations/002_user_links.sql
--- Таблицы связей пользователей с каналами
-
--- Связь пользователей с Telegram
 CREATE TABLE IF NOT EXISTS user_telegram_links (
     user_id UUID PRIMARY KEY,
     telegram_chat_id BIGINT NOT NULL UNIQUE,
@@ -63,7 +56,6 @@ COMMENT ON COLUMN user_telegram_links.user_id IS 'ID пользователя в
 COMMENT ON COLUMN user_telegram_links.telegram_chat_id IS 'Telegram chat_id';
 COMMENT ON COLUMN user_telegram_links.telegram_username IS 'Telegram username (опционально)';
 
--- Связь пользователей с Email
 CREATE TABLE IF NOT EXISTS user_email_links (
     user_id UUID PRIMARY KEY,
     email VARCHAR(255) NOT NULL UNIQUE,
@@ -79,11 +71,6 @@ COMMENT ON COLUMN user_email_links.user_id IS 'ID пользователя в с
 COMMENT ON COLUMN user_email_links.email IS 'Email адрес';
 COMMENT ON COLUMN user_email_links.verified IS 'Флаг верификации email';
 
--- =====================================================
--- migrations/003_sample_data.sql
--- Тестовые данные для разработки
-
--- Тестовые пользователи
 INSERT INTO user_telegram_links (user_id, telegram_chat_id, telegram_username)
 VALUES
     ('550e8400-e29b-41d4-a716-446655440000', 123456789, 'testuser1'),
@@ -96,7 +83,6 @@ VALUES
     ('550e8400-e29b-41d4-a716-446655440001', 'test2@example.com', true)
 ON CONFLICT (user_id) DO NOTHING;
 
--- Тестовое уведомление
 INSERT INTO notifications (
     id,
     user_id,
@@ -119,10 +105,6 @@ VALUES (
 )
 ON CONFLICT DO NOTHING;
 
--- =====================================================
--- migrations/004_cleanup_function.sql
--- Функция для автоматической очистки старых уведомлений
-
 CREATE OR REPLACE FUNCTION cleanup_old_notifications(days_old INTEGER DEFAULT 30)
 RETURNS TABLE(deleted_count BIGINT) AS $$
 DECLARE
@@ -140,13 +122,6 @@ $$ LANGUAGE plpgsql;
 
 COMMENT ON FUNCTION cleanup_old_notifications IS 'Удаляет старые обработанные уведомления';
 
--- Пример использования:
--- SELECT cleanup_old_notifications(30); -- удалить записи старше 30 дней
-
--- =====================================================
--- migrations/005_statistics_view.sql
--- Представление для статистики
-
 CREATE OR REPLACE VIEW notification_statistics AS
 SELECT
     channel,
@@ -160,15 +135,3 @@ FROM notifications
 GROUP BY channel, status;
 
 COMMENT ON VIEW notification_statistics IS 'Статистика по уведомлениям';
-
--- Пример запроса:
--- SELECT * FROM notification_statistics ORDER BY channel, status;
-
--- =====================================================
--- Rollback scripts (опционально)
-
--- DROP VIEW IF EXISTS notification_statistics;
--- DROP FUNCTION IF EXISTS cleanup_old_notifications(INTEGER);
--- DROP TABLE IF EXISTS user_email_links;
--- DROP TABLE IF EXISTS user_telegram_links;
--- DROP TABLE IF EXISTS notifications;
