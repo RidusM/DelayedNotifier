@@ -15,7 +15,7 @@ func QueryLimit(limit uint64) Option {
 	}
 }
 
-func MaxRetries(retries uint32) Option {
+func MaxRetries(retries int) Option {
 	return func(s *NotifyService) {
 		if retries > 0 {
 			s.maxRetries = retries
@@ -32,13 +32,13 @@ func RetryDelay(delay time.Duration) Option {
 }
 
 func (s *NotifyService) validate() error {
-	if s.queryLimit == 0 {
+	if s.queryLimit <= 0 {
 		return errors.New("invalid batch size: must be > 0")
 	}
-	if s.maxRetries == 0 {
+	if s.maxRetries <= 0 {
 		return errors.New("invalid max retries: must be > 0")
 	}
-	if s.retryDelay == 0 {
+	if s.retryDelay <= 0 {
 		return errors.New("invalid base retry delay: must be > 0")
 	}
 	if s.sender == nil {

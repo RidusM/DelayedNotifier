@@ -15,31 +15,30 @@ import (
 )
 
 func main() {
-	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
 
 	var cfg config.Config
-
 	if err := cleanenvport.Load(&cfg); err != nil {
-		fmt.Fprintf(os.Stderr, "failed to load config: %v\n", err)
-		cancel()
+		fmt.Fprintf(os.Stderr, "critical: config load failed: %v\n", err)
 		os.Exit(1)
 	}
 
 	log, err := logger.NewZapAdapter(cfg.App.Name, cfg.Env)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to initialize logger: %v\n", err)
-		cancel()
+		fmt.Fprintf(os.Stderr, "critical: logger init failed: %v\n", err)
 		os.Exit(1)
 	}
 
-	log.Infow("application starting", "version", cfg.App.Version)
+	log.Infow("application starting",
+		"version", cfg.App.Version,
+		"env", cfg.Env,
+	)
 
-	if appErr := app.Run(ctx, &cfg, log); err != nil {
-		log.Errorw("application terminated with error", "error", appErr)
-		cancel()
+	if err := app.Run(ctx, &cfg, log); err != nil {
+		log.Errorw("application crashed", "error", err)
 		os.Exit(1)
 	}
 
-	log.Infow("application stopped gracefully")
-	cancel()
+	log.Info("shutdown complete")
 }

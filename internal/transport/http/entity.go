@@ -16,12 +16,10 @@ type CreateNotificationRequest struct {
 
 // swagger:model CreateNotificationResponse
 type CreateNotificationResponse struct {
-	ID          string    `json:"id"           example:"550e8400-e29b-41d4-a716-446655440001"`
 	UserID      string    `json:"user_id"      example:"550e8400-e29b-41d4-a716-446655440000"`
 	Channel     string    `json:"channel"      example:"email"`
-	Status      string    `json:"status"       example:"waiting"`
+	Payload     string    `json:"payload"      example:"Your order #123 is ready!"`
 	ScheduledAt time.Time `json:"scheduled_at" example:"2023-10-27T10:00:00Z"`
-	CreatedAt   time.Time `json:"created_at"   example:"2023-10-26T10:00:00Z"`
 	Message     string    `json:"message"      example:"Notification created successfully"`
 }
 
@@ -34,7 +32,7 @@ type NotificationStatusResponse struct {
 	Payload     string     `json:"payload"              example:"Your order #123 is ready!"`
 	ScheduledAt time.Time  `json:"scheduled_at"         example:"2023-10-27T10:00:00Z"`
 	SentAt      *time.Time `json:"sent_at,omitempty"    example:"2023-10-27T10:00:05Z"`
-	RetryCount  uint32     `json:"retry_count"          example:"1"`
+	RetryCount  int        `json:"retry_count"          example:"1"`
 	LastError   string     `json:"last_error,omitempty" example:"connection timeout"`
 	CreatedAt   time.Time  `json:"created_at"           example:"2023-10-26T10:00:00Z"`
 }

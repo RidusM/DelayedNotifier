@@ -4,7 +4,7 @@
 CREATE TABLE IF NOT EXISTS notifications (
     id UUID PRIMARY KEY,
     user_id UUID NOT NULL,
-    channel VARCHAR(20) NOT NULL CHECK (channel IN ('telegram', 'email', 'sms', 'push')),
+    channel VARCHAR(20) NOT NULL CHECK (channel IN ('telegram', 'email')),
     payload TEXT NOT NULL,
     recipient_identifier VARCHAR(255) NOT NULL,
     scheduled_at TIMESTAMPTZ NOT NULL,

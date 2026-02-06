@@ -84,26 +84,25 @@ func (h *NotifyHandler) CreateNotification(c *gin.Context) {
 		ScheduledAt: req.ScheduledAt,
 	}
 
-	notification, err := h.svc.Create(ctx, serviceReq)
+	err = h.svc.Create(ctx, serviceReq)
 	if err != nil {
 		h.handleServiceError(c, op, err)
 		return
 	}
 
 	response := CreateNotificationResponse{
-		ID:          notification.ID.String(),
-		UserID:      notification.UserID.String(),
-		Channel:     string(notification.Channel),
-		Status:      notification.Status.String(),
-		ScheduledAt: notification.ScheduledAt,
-		CreatedAt:   notification.CreatedAt,
+		UserID:      req.UserID,
+		Channel:     req.Channel,
+		Payload:     req.Payload,
+		ScheduledAt: req.ScheduledAt,
 		Message:     "Notification created successfully",
 	}
 
 	log.LogAttrs(ctx, logger.InfoLevel, "notification created successfully",
 		logger.String("op", op),
-		logger.String("id", response.ID),
-		logger.String("channel", response.Channel),
+		logger.String("user_id", req.UserID),
+		logger.String("channel", req.Channel),
+		logger.String("payload", req.Payload),
 	)
 
 	h.respondJSON(c, http.StatusCreated, response)

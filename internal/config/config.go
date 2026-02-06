@@ -2,8 +2,6 @@ package config
 
 import (
 	"time"
-
-	"github.com/wb-go/wbf/retry"
 )
 
 type (
@@ -17,19 +15,18 @@ type (
 		TG        TG        `env-prefix:"TG_"`
 		HTTP      HTTP      `env-prefix:"HTTP_"`
 		Logger    Logger    `env-prefix:"LOGGER_"`
-		Env       string    `                      env:"ENV" env-default:"local" validate:"oneof=local dev staging prod"`
+		Env       string    `env:"ENV" env-default:"local" validate:"oneof=local dev staging prod"`
 	}
 
 	App struct {
-		Port    int    `env:"PORT"    env-default:"8080"             validate:"gte=1,lte=65535"`
 		Name    string `env:"NAME"    env-default:"delayed-notifier" validate:"required"`
 		Version string `env:"VERSION" env-default:"1.0.0"            validate:"required"`
 	}
 
 	Service struct {
-		QueryLimit uint64        `env:"QUERY_LIMIT" env-default:"10" validate:"min=1,max=100"`
+		QueryLimit int           `env:"QUERY_LIMIT" env-default:"10" validate:"min=1,max=100"`
 		RetryDelay time.Duration `env:"RETRY_DELAY" env-default:"5m" validate:"gte=1m,lte=1h"`
-		MaxRetries uint32        `env:"MAX_RETRIES" env-default:"3"  validate:"min=1,max=10"`
+		MaxRetries int           `env:"MAX_RETRIES" env-default:"3"  validate:"min=1,max=10"`
 	}
 
 	Database struct {
@@ -55,8 +52,9 @@ type (
 		Heartbeat      time.Duration `env:"HEARTBEAT"       env-default:"10s"                                validate:"gte=1s,lte=60s"`
 		Exchange       string        `env:"EXCHANGE"        env-default:"notifications"                      validate:"required"`
 		ContentType    string        `env:"CONTENT_TYPE"    env-default:"application/json"                   validate:"required"`
-		ReconnectStrat retry.Strategy
-		ProducingStrat retry.Strategy
+		Attempts       int           `env:"ATTEMPTS" env-default:"3" validate:"min=1"`
+		Delay          time.Duration `env:"DELAY" env-default:"1s" validate:"gte=10ms"`
+		Backoff        float64       `env:"BACKOFF" env-default:"2.0" validate:"gte=1.0"`
 	}
 
 	SMTP struct {
@@ -68,7 +66,7 @@ type (
 	}
 
 	TG struct {
-		Token string `env:"TOKEN" env-default:"" validate:"required"`
+		Token string `env:"TOKEN" validate:"required,alphanum,len=46"`
 	}
 
 	HTTP struct {

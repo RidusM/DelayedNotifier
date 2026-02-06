@@ -37,9 +37,20 @@ type (
 			ctx context.Context,
 			qe pgxdriver.QueryExecuter,
 			notify entity.Notification,
+		) error
+
+		GetByID(
+			ctx context.Context,
+			qe pgxdriver.QueryExecuter,
+			id uuid.UUID,
 		) (*entity.Notification, error)
-		GetByID(ctx context.Context, qe pgxdriver.QueryExecuter, id uuid.UUID) (*entity.Notification, error)
-		GetForProcess(ctx context.Context, qe pgxdriver.QueryExecuter, limit uint64) ([]entity.Notification, error)
+
+		GetForProcess(
+			ctx context.Context,
+			qe pgxdriver.QueryExecuter,
+			limit uint64,
+		) ([]entity.Notification, error)
+
 		UpdateStatus(
 			ctx context.Context,
 			qe pgxdriver.QueryExecuter,
@@ -47,41 +58,69 @@ type (
 			status entity.Status,
 			lastErr *string,
 		) error
+
 		RescheduleNotification(
 			ctx context.Context,
 			qe pgxdriver.QueryExecuter,
 			id uuid.UUID,
 			newScheduledAt time.Time,
 		) error
-		GetTelegramChatIDByUserID(ctx context.Context, qe pgxdriver.QueryExecuter, userID uuid.UUID) (int64, error)
-		GetUserEmailByUserID(ctx context.Context, qe pgxdriver.QueryExecuter, userID uuid.UUID) (string, error)
+	}
+
+	UserRepository interface {
+		GetTelegramChatID(
+			ctx context.Context,
+			userID uuid.UUID,
+		) (int64, error)
+		GetEmail(
+			ctx context.Context,
+			userID uuid.UUID,
+		) (string, error)
 	}
 
 	CacheRepository interface {
-		GetCacheKey(id uuid.UUID) string
-		GetFromCache(ctx context.Context, key string) (*entity.Notification, error)
-		SaveToCache(ctx context.Context, key string, notification *entity.Notification) error
-		InvalidateCache(ctx context.Context, id uuid.UUID) error
+		GetCacheKey(
+			id uuid.UUID,
+		) string
+		GetFromCache(
+			ctx context.Context,
+			key string,
+		) (*entity.Notification, error)
+		SaveToCache(
+			ctx context.Context,
+			key string,
+			notification *entity.Notification,
+		) error
+		InvalidateCache(
+			ctx context.Context,
+			id uuid.UUID,
+		) error
 	}
 
 	NotificationSender interface {
-		Send(ctx context.Context, notification entity.Notification) error
+		Send(
+			ctx context.Context,
+			notification entity.Notification,
+		) error
 	}
 
 	NotifyService struct {
-		repo      NotifyRepository
-		cache     CacheRepository
-		sender    NotificationSender
-		tm        transaction.Manager
-		publisher *rabbitmq.Publisher
-		log       logger.Logger
+		notifyRepo NotifyRepository
+		userRepo   UserRepository
+		cache      CacheRepository
+		sender     NotificationSender
+		tm         transaction.Manager
+		db         pgxdriver.QueryExecuter
+		publisher  *rabbitmq.Publisher
+		log        logger.Logger
 
 		queryLimit uint64
-		maxRetries uint32
+		maxRetries int
 		retryDelay time.Duration
 	}
 
 	CreateNotificationRequest struct {
+		ID          uuid.UUID
 		UserID      uuid.UUID
 		Channel     entity.Channel
 		Payload     string
@@ -96,7 +135,8 @@ type (
 )
 
 func NewNotifyService(
-	repo NotifyRepository,
+	notifyRepo NotifyRepository,
+	userRepo UserRepository,
 	cache CacheRepository,
 	sender NotificationSender,
 	tm transaction.Manager,
@@ -105,7 +145,8 @@ func NewNotifyService(
 	opts ...Option,
 ) (*NotifyService, error) {
 	s := &NotifyService{
-		repo:       repo,
+		notifyRepo: notifyRepo,
+		userRepo:   userRepo,
 		cache:      cache,
 		sender:     sender,
 		tm:         tm,
@@ -120,14 +161,14 @@ func NewNotifyService(
 		opt(s)
 	}
 	if err := s.validate(); err != nil {
-		return nil, fmt.Errorf("service.NewNotifyService: %w", err)
+		return nil, fmt.Errorf("service.notify.NewNotifyService: %w", err)
 	}
 
 	return s, nil
 }
 
-func (s *NotifyService) Create(ctx context.Context, req CreateNotificationRequest) (*entity.Notification, error) {
-	const op = "service.NotifyService.Create"
+func (s *NotifyService) Create(ctx context.Context, req CreateNotificationRequest) error {
+	const op = "service.notify.Create"
 
 	log := s.log.Ctx(ctx)
 	startTime := time.Now()
@@ -144,44 +185,43 @@ func (s *NotifyService) Create(ctx context.Context, req CreateNotificationReques
 		logger.Time("scheduled_at", req.ScheduledAt),
 	)
 
+	var err error
+	req.ID, err = uuid.NewV7()
+	if err != nil {
+		return fmt.Errorf("%s: v7 uuid: %w", op, err)
+	}
+
 	if err := s.validateCreateRequest(req); err != nil {
 		log.LogAttrs(ctx, logger.ErrorLevel, "validation failed",
 			logger.String("op", op),
 			logger.Any("error", err),
 		)
-		return nil, fmt.Errorf("%s: %w", op, err)
+		return fmt.Errorf("%s: %w", op, err)
 	}
 
 	scheduledAt := req.ScheduledAt
 	if scheduledAt.Before(time.Now().UTC()) {
-		scheduledAt = time.Now().UTC().Add(time.Minute)
+		return fmt.Errorf("scheduled time must be in future: %w", entity.ErrInvalidData)
 	}
 
-	recipientIdentifier, err := s.getRecipientIdentifier(ctx, req.UserID, req.Channel)
+	recipient, err := s.getRecipientIdentifier(ctx, req.UserID, req.Channel)
 	if err != nil {
-		log.LogAttrs(ctx, logger.ErrorLevel, "failed to get recipient identifier",
-			logger.String("op", op),
-			logger.Any("error", err),
-		)
-		return nil, fmt.Errorf("%s: %w", op, err)
+		return fmt.Errorf("resolve recipient: %w", err)
 	}
 
 	notification := entity.Notification{
 		UserID:              req.UserID,
 		Channel:             req.Channel,
 		Payload:             req.Payload,
-		RecipientIdentifier: recipientIdentifier,
+		RecipientIdentifier: recipient,
 		ScheduledAt:         scheduledAt,
 		Status:              entity.StatusWaiting,
 	}
-
-	var result *entity.Notification
 	err = s.tm.ExecuteInTransaction(ctx, "create_notification", func(tx pgxdriver.QueryExecuter) error {
-		created, txErr := s.repo.Create(ctx, tx, notification)
+		txErr := s.notifyRepo.Create(ctx, tx, notification)
 		if txErr != nil {
 			return transaction.HandleError("create_notification", "create", txErr)
 		}
-		result = created
 		return nil
 	})
 	if err != nil {
@@ -189,22 +229,21 @@ func (s *NotifyService) Create(ctx context.Context, req CreateNotificationReques
 			logger.String("op", op),
 			logger.Any("error", err),
 		)
-		return nil, fmt.Errorf("%s: %w", op, err)
+		return fmt.Errorf("%s: %w", op, err)
 	}
 
 	log.LogAttrs(ctx, logger.InfoLevel, "notification created",
 		logger.String("op", op),
-		logger.String("id", result.ID.String()),
 		logger.Duration("duration", time.Since(startTime)),
 	)
 
-	return result, nil
+	return nil
 }
 
 func (s *NotifyService) GetStatus(ctx context.Context, id uuid.UUID) (*entity.Notification, error) {
 	const op = "service.NotifyService.GetStatus"
 
-	log := s.log.Ctx(ctx)
+	log := s.log.Ctx(ctx).With("op", op)
 	startTime := time.Now()
 
 	defer s.logSlowOperation(ctx, op, startTime, map[string]any{
@@ -226,23 +265,15 @@ func (s *NotifyService) GetStatus(ctx context.Context, id uuid.UUID) (*entity.No
 		return cached, nil
 	}
 
-	var notification *entity.Notification
-	err := s.tm.ExecuteInTransaction(ctx, "get_status", func(tx pgxdriver.QueryExecuter) error {
-		var err error
-		notification, err = s.repo.GetByID(ctx, tx, id)
-		if err != nil {
-			if errors.Is(err, entity.ErrDataNotFound) {
-				return ErrNotificationNotFound
-			}
-			return fmt.Errorf("%s: %w", op, err)
-		}
-		return nil
-	})
+	notification, err := s.notifyRepo.GetByID(ctx, s.db, id)
 	if err != nil {
 		log.LogAttrs(ctx, logger.ErrorLevel, "failed to get from database",
 			logger.String("op", op),
 			logger.Any("error", err),
 		)
+		if errors.Is(err, entity.ErrDataNotFound) {
+			return nil, ErrNotificationNotFound
+		}
 		return nil, fmt.Errorf("%s: %w", op, err)
 	}
 
@@ -274,7 +305,7 @@ func (s *NotifyService) Cancel(ctx context.Context, id uuid.UUID) error {
 	)
 
 	err := s.tm.ExecuteInTransaction(ctx, "cancel_notification", func(tx pgxdriver.QueryExecuter) error {
-		notification, err := s.repo.GetByID(ctx, tx, id)
+		notification, err := s.notifyRepo.GetByID(ctx, tx, id)
 		if err != nil {
 			if errors.Is(err, entity.ErrDataNotFound) {
 				return ErrNotificationNotFound
@@ -290,7 +321,7 @@ func (s *NotifyService) Cancel(ctx context.Context, id uuid.UUID) error {
 		}
 
 		cancelReason := "cancelled by user"
-		if upErr := s.repo.UpdateStatus(ctx, tx, id, entity.StatusCancelled, &cancelReason); upErr != nil {
+		if upErr := s.notifyRepo.UpdateStatus(ctx, tx, id, entity.StatusCancelled, &cancelReason); upErr != nil {
 			return transaction.HandleError("cancel_notification", "update_status", upErr)
 		}
 
@@ -328,39 +359,35 @@ func (s *NotifyService) ProcessQueue(ctx context.Context) (*ProcessingStats, err
 
 	stats := &ProcessingStats{}
 
-	err := s.tm.ExecuteInTransaction(ctx, "process_queue", func(tx pgxdriver.QueryExecuter) error {
-		notifications, err := s.repo.GetForProcess(ctx, tx, s.queryLimit)
-		if err != nil {
-			return transaction.HandleError("process_queue", "get_for_process", err)
-		}
+	notifications, err := s.notifyRepo.GetForProcess(ctx, s.db, s.queryLimit)
 
-		if len(notifications) == 0 {
-			log.LogAttrs(ctx, logger.DebugLevel, "no notifications to process",
-				logger.String("op", op),
-			)
-			return nil
-		}
-
-		log.LogAttrs(ctx, logger.InfoLevel, "publish to queue",
+	if len(notifications) == 0 {
+		log.LogAttrs(ctx, logger.DebugLevel, "no notifications to process",
 			logger.String("op", op),
-			logger.Int("count", len(notifications)),
 		)
+		return nil, nil
+	}
 
-		for _, notification := range notifications {
-			if pubErr := s.publishToQueue(ctx, tx, notification); pubErr != nil {
-				log.LogAttrs(ctx, logger.ErrorLevel, "failed to publish",
-					logger.String("op", op),
-					logger.String("id", notification.ID.String()),
-					logger.Any("error", pubErr),
-				)
-				stats.Failed++
-				continue
-			}
-			stats.Processed++
+	log.LogAttrs(ctx, logger.InfoLevel, "publish to queue",
+		logger.String("op", op),
+		logger.Int("count", len(notifications)),
+	)
+
+	for _, n := range notifications {
+		if pubErr := s.publishToQueue(ctx, s.db, n); pubErr != nil {
+			log.LogAttrs(ctx, logger.ErrorLevel, "failed to publish",
+				logger.String("op", op),
+				logger.String("id", n.ID.String()),
+				logger.Any("error", pubErr),
+			)
+			stats.Failed++
+			continue
 		}
-
-		return nil
-	})
+		err = s.tm.ExecuteInTransaction(ctx, "update_status", func(tx pgxdriver.QueryExecuter) error {
+			return s.notifyRepo.UpdateStatus(ctx, tx, n.ID, entity.StatusInProcess, nil)
+		})
+		stats.Processed++
+	}
 
 	stats.Duration = time.Since(startTime)
 
@@ -466,18 +493,18 @@ func (s *NotifyService) publishToQueue(
 	payload, err := json.Marshal(notification)
 	if err != nil {
 		errMsg := fmt.Sprintf("marshal error: %v", err)
-		_ = s.repo.UpdateStatus(ctx, tx, notification.ID, entity.StatusFailed, &errMsg)
+		_ = s.notifyRepo.UpdateStatus(ctx, tx, notification.ID, entity.StatusFailed, &errMsg)
 		return fmt.Errorf("marshal: %w", err)
 	}
 
 	routingKey := string(notification.Channel)
 	if pubErr := s.publisher.Publish(ctx, payload, routingKey); pubErr != nil {
 		errMsg := fmt.Sprintf("publish error: %v", pubErr)
-		_ = s.repo.UpdateStatus(ctx, tx, notification.ID, entity.StatusFailed, &errMsg)
+		_ = s.notifyRepo.UpdateStatus(ctx, tx, notification.ID, entity.StatusFailed, &errMsg)
 		return fmt.Errorf("publish: %w", pubErr)
 	}
 
-	if upErr := s.repo.UpdateStatus(ctx, tx, notification.ID, entity.StatusInProcess, nil); upErr != nil {
+	if upErr := s.notifyRepo.UpdateStatus(ctx, tx, notification.ID, entity.StatusInProcess, nil); upErr != nil {
 		return fmt.Errorf("update status: %w", upErr)
 	}
 
@@ -494,7 +521,7 @@ func (s *NotifyService) getRecipientIdentifier(
 	err := s.tm.ExecuteInTransaction(ctx, "get_recipient_identifier", func(tx pgxdriver.QueryExecuter) error {
 		switch channel {
 		case entity.Telegram:
-			chatID, txErr := s.repo.GetTelegramChatIDByUserID(ctx, tx, userID)
+			chatID, txErr := s.userRepo.GetTelegramChatID(ctx, userID)
 			if txErr != nil {
 				if errors.Is(txErr, entity.ErrDataNotFound) {
 					return fmt.Errorf("telegram chat_id not found for user: %w", entity.ErrRecipientNotFound)
@@ -504,7 +531,7 @@ func (s *NotifyService) getRecipientIdentifier(
 			recipientIdentifier = strconv.FormatInt(chatID, 10)
 
 		case entity.Email:
-			email, txErr := s.repo.GetUserEmailByUserID(ctx, tx, userID)
+			email, txErr := s.userRepo.GetEmail(ctx, userID)
 			if txErr != nil {
 				if errors.Is(txErr, entity.ErrDataNotFound) {
 					return fmt.Errorf("email not found for user: %w", entity.ErrRecipientNotFound)
@@ -539,7 +566,7 @@ func (s *NotifyService) updateAfterSend(ctx context.Context, id uuid.UUID, sendE
 	log := s.log.Ctx(ctx)
 	err := s.tm.ExecuteInTransaction(ctx, "update_after_send", func(tx pgxdriver.QueryExecuter) error {
 		if sendErr == nil {
-			return s.repo.UpdateStatus(ctx, tx, id, entity.StatusSent, nil)
+			return s.notifyRepo.UpdateStatus(ctx, tx, id, entity.StatusSent, nil)
 		}
 
 		return s.handleSendFailure(ctx, tx, id, sendErr)
@@ -560,13 +587,13 @@ func (s *NotifyService) handleSendFailure(
 	id uuid.UUID,
 	sendErr error,
 ) error {
-	notification, err := s.repo.GetByID(ctx, tx, id)
+	notification, err := s.notifyRepo.GetByID(ctx, tx, id)
 	if err != nil {
 		return fmt.Errorf("get notification: %w", err)
 	}
 
 	errMsg := sendErr.Error()
-	if statusErr := s.repo.UpdateStatus(ctx, tx, id, entity.StatusFailed, &errMsg); statusErr != nil {
+	if statusErr := s.notifyRepo.UpdateStatus(ctx, tx, id, entity.StatusFailed, &errMsg); statusErr != nil {
 		return fmt.Errorf("update status to failed: %w", statusErr)
 	}
 
@@ -581,25 +608,26 @@ func (s *NotifyService) scheduleRetry(
 	ctx context.Context,
 	tx pgxdriver.QueryExecuter,
 	id uuid.UUID,
-	retryCount uint32,
+	retryCount int,
 ) error {
 	nextAttempt := s.calculateNextAttempt(retryCount)
 
-	if err := s.repo.RescheduleNotification(ctx, tx, id, nextAttempt); err != nil {
+	if err := s.notifyRepo.RescheduleNotification(ctx, tx, id, nextAttempt); err != nil {
 		return fmt.Errorf("reschedule notification: %w", err)
 	}
 
 	s.log.LogAttrs(ctx, logger.InfoLevel, "notification rescheduled",
 		logger.String("id", id.String()),
-		logger.Uint32("retry_count", retryCount+1),
+		logger.Int("retry_count", retryCount+1),
 		logger.Time("next_attempt", nextAttempt),
 	)
 
 	return nil
 }
 
-func (s *NotifyService) calculateNextAttempt(retryCount uint32) time.Time {
-	delay := s.retryDelay * time.Duration(1<<retryCount)
+func (s *NotifyService) calculateNextAttempt(retryCount int) time.Time {
+	multiplier := 1 << min(int(retryCount), 6)
+	delay := min(s.retryDelay*time.Duration(multiplier), 24*time.Hour)
 	return time.Now().UTC().Add(delay)
 }
 

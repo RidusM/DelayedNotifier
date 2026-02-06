@@ -30,10 +30,11 @@ func (s *CacheRepository) GetCacheKey(id uuid.UUID) string {
 }
 
 func (s *CacheRepository) GetFromCache(ctx context.Context, key string) (*entity.Notification, error) {
-	const op = "repository.CacheRepository.GetFromCache"
+	const op = "repository.cache.GetFromCache"
+
 	cached, err := s.rdb.Get(ctx, key)
 	if err != nil || cached == "" {
-		return nil, fmt.Errorf("%s: get form rdb: %w", op, err)
+		return nil, fmt.Errorf("%s: %w", op, err)
 	}
 
 	var notification entity.Notification
@@ -45,19 +46,22 @@ func (s *CacheRepository) GetFromCache(ctx context.Context, key string) (*entity
 }
 
 func (s *CacheRepository) SaveToCache(ctx context.Context, key string, notification *entity.Notification) error {
+	const op = "repository.cache.SaveToCache"
 	data, err := json.Marshal(notification)
 	if err != nil {
-		return fmt.Errorf("repository.CacheRepository.SaveToCache: marshal json: %w", err)
+		return fmt.Errorf("%s: marshal json: %w", op, err)
 	}
 	if setErr := s.rdb.SetWithExpiration(ctx, key, data, _cacheTTL); setErr != nil {
-		return fmt.Errorf("repository.CacheRepository.SaveToCache: set with expiration: %w", setErr)
+		return fmt.Errorf("%s: %w", op, setErr)
 	}
 	return nil
 }
 
 func (s *CacheRepository) InvalidateCache(ctx context.Context, id uuid.UUID) error {
+	const op = "repository.cache.InvalidateCache"
+
 	if err := s.rdb.Del(ctx, s.GetCacheKey(id)); err != nil {
-		return fmt.Errorf("repository.CacheRepository.InvalidateCache: %w", err)
+		return fmt.Errorf("%s: %w", op, err)
 	}
 	return nil
 }
