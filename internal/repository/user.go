@@ -27,9 +27,7 @@ func (r *UserRepository) GetTelegramChatID(
 ) (int64, error) {
 	const op = "repository.user.GetTelegramChatID"
 
-	if qe == nil {
-		qe = r.db
-	}
+	executor := r.exec(qe)
 
 	var chatID int64
 	sql, args, err := r.db.Select("telegram_chat_id").
@@ -40,7 +38,7 @@ func (r *UserRepository) GetTelegramChatID(
 		return 0, fmt.Errorf("%s: select query: %w", op, err)
 	}
 
-	err = qe.QueryRow(ctx, sql, args...).Scan(&chatID)
+	err = executor.QueryRow(ctx, sql, args...).Scan(&chatID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return 0, fmt.Errorf("%s: %w", op, entity.ErrDataNotFound)
@@ -58,9 +56,7 @@ func (r *UserRepository) GetEmail(
 ) (string, error) {
 	const op = "repository.user.GetEmail"
 
-	if qe == nil {
-		qe = r.db
-	}
+	executor := r.exec(qe)
 
 	var email string
 	sql, args, err := r.db.Select("email").
@@ -71,7 +67,7 @@ func (r *UserRepository) GetEmail(
 		return "", fmt.Errorf("%s: select query: %w", op, err)
 	}
 
-	err = qe.QueryRow(ctx, sql, args...).Scan(&email)
+	err = executor.QueryRow(ctx, sql, args...).Scan(&email)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return "", fmt.Errorf("%s: %w", op, entity.ErrDataNotFound)
@@ -80,4 +76,11 @@ func (r *UserRepository) GetEmail(
 	}
 
 	return email, nil
+}
+
+func (r *UserRepository) exec(qe pgxdriver.QueryExecuter) pgxdriver.QueryExecuter {
+	if qe != nil {
+		return qe
+	}
+	return r.db
 }

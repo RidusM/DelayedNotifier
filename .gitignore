@@ -37,6 +37,9 @@ Thumbs.db
 *.log
 logs/
 
+# Configs
+configs/
+
 # Build artifacts
 bin/
 build/
@@ -65,4 +68,3 @@ temp/
 
 # Local development
 .local/
-

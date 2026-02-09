@@ -2,7 +2,10 @@ package sender
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"mime"
+	"time"
 
 	"delayednotifier/internal/entity"
 
@@ -17,41 +20,62 @@ type EmailSender struct {
 }
 
 func NewEmailSender(smtpHost string, smtpPort int, username, password, from string, log logger.Logger) *EmailSender {
-	dialer := gomail.NewDialer(smtpHost, smtpPort, username, password)
-
-	log.LogAttrs(context.Background(), logger.InfoLevel, "email sender initialized",
-		logger.String("smtp_host", smtpHost),
-		logger.Int("smtp_port", smtpPort),
-		logger.String("from", from),
-	)
-
 	return &EmailSender{
-		dialer: dialer,
+		dialer: gomail.NewDialer(smtpHost, smtpPort, username, password),
 		from:   from,
 		log:    log,
 	}
 }
 
-func (s *EmailSender) Send(ctx context.Context, notification entity.Notification) error {
-	email := gomail.NewMessage()
-	email.SetHeader("From", s.from)
-	email.SetHeader("To", notification.RecipientIdentifier)
-	email.SetHeader("Subject", "Notification")
-	email.SetBody("text/html", notification.Payload)
+func (s *EmailSender) Send(ctx context.Context, n entity.Notification) error {
+	const op = "sender.email.Send"
 
-	s.log.LogAttrs(ctx, logger.DebugLevel, "sending email",
-		logger.String("to", notification.RecipientIdentifier),
-		logger.String("notification_id", notification.ID.String()),
-	)
-
-	if err := s.dialer.DialAndSend(email); err != nil {
-		return fmt.Errorf("failed to send email: %w", err)
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("%s: %w", op, err)
 	}
 
-	s.log.LogAttrs(ctx, logger.InfoLevel, "email sent",
-		logger.String("to", notification.RecipientIdentifier),
-		logger.String("notification_id", notification.ID.String()),
+	var payload struct {
+		Subject string `json:"subject"`
+		Body    string `json:"body"`
+	}
+
+	if err := json.Unmarshal([]byte(n.Payload), &payload); err != nil {
+		payload.Body = n.Payload
+		payload.Subject = "Notification"
+	} else {
+		if payload.Subject == "" {
+			payload.Subject = "Notification"
+		}
+	}
+
+	m := gomail.NewMessage()
+	m.SetHeader("From", s.from)
+	m.SetHeader("To", n.RecipientIdentifier)
+
+	m.SetHeader("Subject", mime.QEncoding.Encode("utf-8", payload.Subject))
+
+	m.SetBody("text/html", payload.Body)
+
+	s.log.LogAttrs(ctx, logger.DebugLevel, "sending email",
+		logger.String("to", n.RecipientIdentifier),
+		logger.String("notification_id", n.ID.String()),
+		logger.String("subject", payload.Subject),
 	)
 
-	return nil
+	done := make(chan error, 1)
+	go func() {
+		done <- s.dialer.DialAndSend(m)
+	}()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			return fmt.Errorf("%s: dial and send: %w", op, err)
+		}
+		return nil
+	case <-ctx.Done():
+		return fmt.Errorf("%s: %w", op, ctx.Err())
+	case <-time.After(10 * time.Second):
+		return fmt.Errorf("%s: timeout after 10s", op)
+	}
 }

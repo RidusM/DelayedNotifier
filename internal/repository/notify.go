@@ -60,17 +60,23 @@ func (r *NotifyRepository) GetByID(
 	ctx context.Context,
 	qe pgxdriver.QueryExecuter,
 	id uuid.UUID,
+	forUpdate bool,
 ) (*entity.Notification, error) {
 	const op = "repository.notify.GetByID"
 
 	executor := r.exec(qe)
 
-	sql, args, err := r.db.Select(notificationColumns).
+	query := squirrel.Select(notificationColumns).
 		From("notifications").
-		Where(squirrel.Eq{"id": id}).
-		ToSql()
+		Where(squirrel.Eq{"id": id})
+
+	if forUpdate {
+		query = query.Suffix("FOR UPDATE")
+	}
+
+	sql, args, err := query.ToSql()
 	if err != nil {
-		return nil, fmt.Errorf("%s: select query: %w", op, err)
+		return nil, fmt.Errorf("%s: build query: %w", op, err)
 	}
 
 	result := &entity.Notification{}
@@ -87,6 +93,7 @@ func (r *NotifyRepository) GetByID(
 		&result.CreatedAt,
 		&result.RecipientIdentifier,
 	)
+
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, fmt.Errorf("%s: %w", op, entity.ErrDataNotFound)

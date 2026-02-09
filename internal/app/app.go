@@ -2,10 +2,12 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
 	"delayednotifier/internal/config"
+	"delayednotifier/internal/entity"
 	"delayednotifier/internal/repository"
 	"delayednotifier/internal/service"
 	httpt "delayednotifier/internal/transport/http"
@@ -23,124 +25,147 @@ import (
 const (
 	_strategyAttempts = 3
 	_strategyDelay    = 3 * time.Second
-	_strategyBackoff  = 2
+	_strategyBackoff  = 2.0
 )
 
 func Run(ctx context.Context, cfg *config.Config, log logger.Logger) error {
-	eg, ctx := errgroup.WithContext(ctx)
-
-	db, dbErr := initDatabase(&cfg.Database, log)
-	if dbErr != nil {
-		return dbErr
+	if err := validateConfig(cfg); err != nil {
+		return fmt.Errorf("config validation failed: %w", err)
 	}
-	defer closeDB(db)
 
-	tm, tmErr := initTransactionManager(
-		db,
-		log,
+	var (
+		db  *pgxdriver.Postgres
+		rdb *redis.Client
+		rmq *rabbitmq.Publisher
+		tm  transaction.Manager
+		svc *service.NotifyService
+		err error
 	)
-	if tmErr != nil {
-		return tmErr
+
+	defer func() {
+		if rdb != nil {
+			if closeErr := rdb.Close(); closeErr != nil {
+				log.Error("failed to close Redis client", logger.Any("error", closeErr))
+			} else {
+				log.Info("Redis client closed")
+			}
+		}
+		if db != nil {
+			db.Close()
+			log.Info("database connection pool closed")
+		}
+	}()
+
+	db, err = initDatabase(&cfg.Database, log)
+	if err != nil {
+		return fmt.Errorf("init database: %w", err)
+	}
+	log.Info("database initialized successfully")
+
+	tm, err = initTransactionManager(db, log)
+	if err != nil {
+		return fmt.Errorf("init transaction manager: %w", err)
 	}
 
-	rdb := initCache(&cfg.Cache)
-	if rdbErr := closeCache(rdb); rdbErr != nil {
-		return rdbErr
+	rdb = initCache(&cfg.Cache)
+	log.Info("cache initialized successfully")
+
+	teleSender, err := initTelegramSender(&cfg.TG, log)
+	if err != nil {
+		return fmt.Errorf("init telegram sender: %w", err)
 	}
 
-	teleSender, teleErr := initTelegramSender(&cfg.TG, log)
-	if teleErr != nil {
-		return teleErr
-	}
 	emailSender := initEmailSender(&cfg.SMTP, log)
 
-	multiSender := initMultiSender(teleSender, emailSender)
+	multiSender := initMultiSender(log, teleSender, emailSender)
+	log.Info("multi-sender initialized successfully")
 
-	rmq, rmqErr := initPublisher(&cfg.Publisher)
-	if rmqErr != nil {
-		return rmqErr
+	rmq, err = initPublisher(&cfg.Publisher)
+	if err != nil {
+		return fmt.Errorf("init rabbitmq publisher: %w", err)
 	}
+	log.Info("RabbitMQ publisher initialized successfully")
 
-	notifyService, svcErr := initNotifyService(
-		&cfg.Service,
-		db,
-		tm,
-		rdb,
-		multiSender,
-		rmq,
-		log,
+	svc, err = initNotifyService(&cfg.Service, db, tm, rdb, multiSender, rmq, log)
+	if err != nil {
+		return fmt.Errorf("init notify service: %w", err)
+	}
+	log.Info("notification service initialized successfully")
+
+	eg, ctx := errgroup.WithContext(ctx)
+
+	if err := initHTTPServer(ctx, eg, &cfg.HTTP, svc, log); err != nil {
+		return fmt.Errorf("init http server: %w", err)
+	}
+	log.Info("HTTP server initialized")
+
+	log.Info("application started",
+		logger.String("env", cfg.Env),
+		logger.String("version", cfg.App.Version),
 	)
-	if svcErr != nil {
-		return svcErr
+
+	if err := eg.Wait(); err != nil {
+		log.Error("application shutdown with error", logger.Any("error", err))
+		return err
 	}
 
-	if serverErr := initHTTPServer(ctx, eg, &cfg.HTTP, notifyService, log); serverErr != nil {
-		return serverErr
-	}
-
-	return waitForShutdown(eg)
+	log.Info("application shutdown complete")
+	return nil
 }
 
 func initDatabase(cfg *config.Database, log logger.Logger) (*pgxdriver.Postgres, error) {
-	db, err := pgxdriver.New(
+	return pgxdriver.New(
 		cfg.DSN,
-		log.With("component", "database"),
+		log.With(logger.String("component", "database")),
 		pgxdriver.MaxPoolSize(cfg.PoolMax),
 		pgxdriver.MaxConnAttempts(cfg.ConnAttempts),
 		pgxdriver.BaseRetryDelay(cfg.BaseRetryDelay),
 		pgxdriver.MaxRetryDelay(cfg.MaxRetryDelay),
 	)
-	if err != nil {
-		return nil, fmt.Errorf("app.initDatabase: %w", err)
-	}
-	return db, nil
-}
-
-func closeDB(db *pgxdriver.Postgres) {
-	if db != nil {
-		db.Close()
-	}
 }
 
 func initTransactionManager(db *pgxdriver.Postgres, log logger.Logger) (transaction.Manager, error) {
-	tm, err := transaction.NewManager(
-		db,
-		log,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("app.initTransactionManager: %w", err)
-	}
-	return tm, nil
+	return transaction.NewManager(db, log)
 }
 
-func initCache(
-	cfg *config.Cache,
-) *redis.Client {
-	client := redis.New(cfg.Addr, cfg.Password, 0)
-	return client
-}
-
-func closeCache(rdb *redis.Client) error {
-	if err := rdb.Close(); err != nil {
-		return fmt.Errorf("app.closeCache: %w", err)
-	}
-	return nil
+func initCache(cfg *config.Cache) *redis.Client {
+	return redis.New(cfg.Addr, cfg.Password, 0)
 }
 
 func initTelegramSender(cfg *config.TG, log logger.Logger) (*sender.TelegramSender, error) {
-	tSender, err := sender.NewTelegramSender(cfg.Token, log)
-	if err != nil {
-		return nil, fmt.Errorf("app.initTelegramSender: %w", err)
+	if cfg.Token == "" {
+		log.Warn("telegram sender disabled: token not configured")
+		return nil, nil
 	}
-	return tSender, nil
+	return sender.NewTelegramSender(cfg.Token, log)
 }
 
 func initEmailSender(cfg *config.SMTP, log logger.Logger) *sender.EmailSender {
+	if cfg.Host == "" {
+		log.Warn("email sender disabled: host not configured")
+		return nil
+	}
 	return sender.NewEmailSender(cfg.Host, cfg.Port, cfg.Username, cfg.Password, cfg.From, log)
 }
 
-func initMultiSender(ts sender.NotificationSender, es sender.NotificationSender) *sender.MultiSender {
-	return sender.NewMultiSender(ts, es)
+func initMultiSender(
+	log logger.Logger,
+	tg *sender.TelegramSender,
+	email *sender.EmailSender,
+) *sender.MultiSender {
+	multi := sender.NewMultiSender()
+
+	if tg != nil {
+		multi.Register(entity.Telegram, tg)
+		log.Info("registered telegram sender")
+	}
+
+	if email != nil {
+		multi.Register(entity.Email, email)
+		log.Info("registered email sender")
+	}
+
+	return multi
 }
 
 func initPublisher(cfg *config.Publisher) (*rabbitmq.Publisher, error) {
@@ -160,9 +185,8 @@ func initPublisher(cfg *config.Publisher) (*rabbitmq.Publisher, error) {
 
 	client, err := rabbitmq.NewClient(rmqCfg)
 	if err != nil {
-		return nil, fmt.Errorf("app.initPublisher: init new RabbitMQ client: %w", err)
+		return nil, fmt.Errorf("create rabbitmq client: %w", err)
 	}
-	defer client.Close()
 
 	publisher := rabbitmq.NewPublisher(client, cfg.Exchange, cfg.ContentType)
 	return publisher, nil
@@ -178,22 +202,25 @@ func initNotifyService(
 	log logger.Logger,
 ) (*service.NotifyService, error) {
 	notifyRepo := repository.NewNotifyRepository(db)
-	cacheRepo := repository.NewCacheRepository(rdb)
-	notifyService, err := service.NewNotifyService(
+	userRepo := repository.NewUserRepository(db)
+	cacheRepo := repository.NewCacheRepository(rdb, 5*time.Minute)
+
+	svc, err := service.NewNotifyService(
 		notifyRepo,
+		userRepo,
 		cacheRepo,
 		ms,
 		tm,
 		rmq,
 		log,
-		service.QueryLimit(cfg.QueryLimit),
+		service.QueryLimit(uint64(cfg.QueryLimit)),
 		service.RetryDelay(cfg.RetryDelay),
 		service.MaxRetries(cfg.MaxRetries),
 	)
 	if err != nil {
-		return nil, fmt.Errorf("app.initNotifyService: %w", err)
+		return nil, fmt.Errorf("create notify service: %w", err)
 	}
-	return notifyService, nil
+	return svc, nil
 }
 
 func initHTTPServer(
@@ -203,28 +230,28 @@ func initHTTPServer(
 	svc *service.NotifyService,
 	log logger.Logger,
 ) error {
-	httpServer, err := httpt.NewHTTPServer(
-		httpt.NewNotifyHandler(svc, log),
-		cfg,
-		log.With("component", "http server"),
-	)
+	handler := httpt.NewNotifyHandler(svc, log)
+	httpServer, err := httpt.NewHTTPServer(handler, cfg, log.With(logger.String("component", "http")))
 	if err != nil {
-		return fmt.Errorf("app.initHTTPServer: %w", err)
+		return fmt.Errorf("create http server: %w", err)
 	}
 
 	eg.Go(func() error {
-		return httpServer.Start(ctx)
+		if err := httpServer.Start(ctx); err != nil && !errors.Is(err, context.Canceled) {
+			return fmt.Errorf("http server error: %w", err)
+		}
+		return nil
 	})
+
 	return nil
 }
 
-func waitForShutdown(eg *errgroup.Group) error {
-	if err := eg.Wait(); err != nil && !isShutdownSignal(err) {
-		return fmt.Errorf("app.waitForShutdown: application failed: %w", err)
+func validateConfig(cfg *config.Config) error {
+	if cfg.Env == "local" {
+		return nil
+	}
+	if cfg.Publisher.URL == "" {
+		return errors.New("missing RABBIT_URL")
 	}
 	return nil
-}
-
-func isShutdownSignal(err error) bool {
-	return err != nil && err.Error() == "shutdown signal"
 }

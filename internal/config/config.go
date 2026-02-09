@@ -38,7 +38,7 @@ type (
 	}
 
 	Cache struct {
-		Addr        string        `env:"ADDR"          env-default:"localhost:6379" validate:"required"`
+		Addr        string        `env:"ADDR" env-default:"localhost:6379" validate:"required"`
 		Password    string        `env:"PASSWORD"      env-default:""`
 		PoolSize    int           `env:"POOL_SIZE"     env-default:"20"             validate:"min=1,max=100"`
 		MinIdleCons int           `env:"MIN_IDLE_CONS" env-default:"10"             validate:"min=1,max=100"`
@@ -52,26 +52,26 @@ type (
 		Heartbeat      time.Duration `env:"HEARTBEAT"       env-default:"10s"                                validate:"gte=1s,lte=60s"`
 		Exchange       string        `env:"EXCHANGE"        env-default:"notifications"                      validate:"required"`
 		ContentType    string        `env:"CONTENT_TYPE"    env-default:"application/json"                   validate:"required"`
-		Attempts       int           `env:"ATTEMPTS" env-default:"3" validate:"min=1"`
-		Delay          time.Duration `env:"DELAY" env-default:"1s" validate:"gte=10ms"`
-		Backoff        float64       `env:"BACKOFF" env-default:"2.0" validate:"gte=1.0"`
+		Attempts       int           `env:"ATTEMPTS" env-default:"3" validate:"min=1,max=10"`
+		Delay          time.Duration `env:"DELAY" env-default:"1s" validate:"gte=10ms,lte=5m"`
+		Backoff        float64       `env:"BACKOFF" env-default:"2.0" validate:"gte=1.0,lte=5.0"`
 	}
 
 	SMTP struct {
-		Host     string `env:"HOST"     env-default:"smtp.gmail.com"      validate:"required"`
-		Port     int    `env:"PORT"     env-default:"587"                 validate:"required,gte=1,lte=65535"`
-		Username string `env:"USERNAME" env-default:""                    validate:"required"`
-		Password string `env:"PASSWORD" env-default:""                    validate:"required"`
-		From     string `env:"FROM"     env-default:"noreply@example.com" validate:"required,email"`
+		Host     string `env:"HOST" env-default:"smtp.gmail.com"`
+		Port     int    `env:"PORT" env-default:"587" validate:"gte=1,lte=65535"`
+		Username string `env:"USERNAME" env-default:""`
+		Password string `env:"PASSWORD" env-default:""`
+		From     string `env:"FROM" env-default:"noreply@example.com" validate:"email"`
 	}
 
 	TG struct {
-		Token string `env:"TOKEN" validate:"required,alphanum,len=46"`
+		Token string `env:"TOKEN" validate:"required"`
 	}
 
 	HTTP struct {
-		Host              string        `env:"HOST"                env-default:"0.0.0.0" validate:"required"`
-		Port              string        `env:"PORT"                env-default:"8080"    validate:"required"`
+		Host              string        `env:"HOST" env-default:"0.0.0.0" validate:"required"`
+		Port              string        `env:"PORT" env-default:"8080"   validate:"required"`
 		ReadTimeout       time.Duration `env:"READ_TIMEOUT"        env-default:"5s"      validate:"gte=1s,lte=30s"`
 		WriteTimeout      time.Duration `env:"WRITE_TIMEOUT"       env-default:"5s"      validate:"gte=1s,lte=30s"`
 		IdleTimeout       time.Duration `env:"IDLE_TIMEOUT"        env-default:"60s"     validate:"gte=1s,lte=300s"`

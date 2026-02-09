@@ -2,7 +2,7 @@
 package httpt
 
 import (
-	"encoding/json"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -37,7 +37,7 @@ func (h *NotifyHandler) CreateNotification(c *gin.Context) {
 	)
 
 	var req CreateNotificationRequest
-	if err := json.NewDecoder(c.Request.Body).Decode(&req); err != nil {
+	if err := c.ShouldBindJSON(&req); err != nil {
 		log.LogAttrs(ctx, logger.ErrorLevel, "invalid request body",
 			logger.String("op", op),
 			logger.Any("error", err),
@@ -67,13 +67,14 @@ func (h *NotifyHandler) CreateNotification(c *gin.Context) {
 		return
 	}
 
-	if req.Payload == "" {
-		h.respondError(c, http.StatusBadRequest, "empty_payload", "Payload cannot be empty", nil)
+	if req.ScheduledAt.IsZero() {
+		h.respondError(c, http.StatusBadRequest, "invalid_scheduled_at", "Scheduled time is required", nil)
 		return
 	}
 
-	if req.ScheduledAt.IsZero() {
-		h.respondError(c, http.StatusBadRequest, "invalid_scheduled_at", "Scheduled time is required", nil)
+	if req.ScheduledAt.Before(time.Now().UTC()) {
+		h.respondError(c, http.StatusBadRequest, "invalid_scheduled_at",
+			"Scheduled time must be in the future", nil)
 		return
 	}
 
@@ -84,13 +85,14 @@ func (h *NotifyHandler) CreateNotification(c *gin.Context) {
 		ScheduledAt: req.ScheduledAt,
 	}
 
-	err = h.svc.Create(ctx, serviceReq)
+	notificationID, err := h.svc.Create(ctx, serviceReq)
 	if err != nil {
 		h.handleServiceError(c, op, err)
 		return
 	}
 
 	response := CreateNotificationResponse{
+		ID:          notificationID.String(),
 		UserID:      req.UserID,
 		Channel:     req.Channel,
 		Payload:     req.Payload,
@@ -102,9 +104,10 @@ func (h *NotifyHandler) CreateNotification(c *gin.Context) {
 		logger.String("op", op),
 		logger.String("user_id", req.UserID),
 		logger.String("channel", req.Channel),
-		logger.String("payload", req.Payload),
+		logger.String("notification_id", notificationID.String()),
 	)
 
+	c.Header("Location", fmt.Sprintf("/notify/%s", notificationID))
 	h.respondJSON(c, http.StatusCreated, response)
 }
 

@@ -2,7 +2,6 @@ package sender
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	"delayednotifier/internal/entity"
@@ -13,38 +12,30 @@ type NotificationSender interface {
 }
 
 type MultiSender struct {
-	telegram NotificationSender
-	email    NotificationSender
+	senders map[entity.Channel]NotificationSender
 }
 
-func NewMultiSender(telegram, email NotificationSender) *MultiSender {
+func NewMultiSender() *MultiSender {
 	return &MultiSender{
-		telegram: telegram,
-		email:    email,
+		senders: make(map[entity.Channel]NotificationSender),
 	}
 }
 
-func (s *MultiSender) Send(ctx context.Context, notification entity.Notification) error {
-	const op = "transport.sender.MultiSender"
-	switch notification.Channel {
-	case entity.Telegram:
-		if s.telegram == nil {
-			return errors.New("telegram sender not configured")
-		}
-		err := s.telegram.Send(ctx, notification)
-		if err != nil {
-			return fmt.Errorf("%s: %w", op, err)
-		}
-	case entity.Email:
-		if s.email == nil {
-			return errors.New("email sender not configured")
-		}
-		err := s.email.Send(ctx, notification)
-		if err != nil {
-			return fmt.Errorf("%s: %w", op, err)
-		}
-	default:
-		return errors.New("unsupported channel")
+func (s *MultiSender) Register(channel entity.Channel, sender NotificationSender) {
+	s.senders[channel] = sender
+}
+
+func (s *MultiSender) Send(ctx context.Context, n entity.Notification) error {
+	const op = "transport.multi.Send"
+
+	if !n.Channel.IsValid() {
+		return fmt.Errorf("%s: invalid channel %q", op, n.Channel)
 	}
-	return nil
+
+	sender, ok := s.senders[n.Channel]
+	if !ok {
+		return fmt.Errorf("%s: no sender registered for channel %q", op, n.Channel)
+	}
+
+	return sender.Send(ctx, n)
 }

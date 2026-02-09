@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/signal"
@@ -15,6 +16,13 @@ import (
 )
 
 func main() {
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Fprintf(os.Stderr, "PANIC: %v\n", r)
+			os.Exit(2)
+		}
+	}()
+
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
@@ -33,12 +41,15 @@ func main() {
 	log.Infow("application starting",
 		"version", cfg.App.Version,
 		"env", cfg.Env,
+		"pid", os.Getpid(),
 	)
 
 	if err := app.Run(ctx, &cfg, log); err != nil {
-		log.Errorw("application crashed", "error", err)
-		os.Exit(1)
+		if !errors.Is(err, context.Canceled) {
+			log.Errorw("application crashed", "error", err)
+			os.Exit(1)
+		}
 	}
 
-	log.Info("shutdown complete")
+	log.Infow("shutdown complete")
 }

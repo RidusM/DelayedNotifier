@@ -8,32 +8,43 @@ services:
       db:
         condition: service_healthy
       rabbitmq:
-        condition: service_started
+        condition: service_healthy
       redis:
         condition: service_started
+      db-migrator:
+        condition: service_completed_successfully
     ports:
-      - "8080:8080"
+      - "{HTTP_PORT:-8080}:${HTTP_PORT:-8080}"
     environment:
-      - CONFIG_PATH=./config/local.yaml
+      - CONFIG_PATH=./app/configs/dev.env
     networks:
-      - notifier-network
+      - app-network
+    restart: on-failure
 
   db:
-    image: postgres:15-alpine
-    container_name: notifier-db
+    image: postgres:17-alpine
+    container_name: notify-db
     environment:
-      POSTGRES_USER: user
-      POSTGRES_PASSWORD: pass
-      POSTGRES_DB: notifier
+      POSTGRES_DB: ${DB_NAME:-notify_db}
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
     ports:
-      - "5432:5432"
+      - "${DB_PORT:-5432}:${DB_PORT:-5432}"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - app-network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U user -d notifier"]
-      interval: 5s
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${DB_USER:-postgres} -d ${DB_NAME:-notify_db}",
+        ]
+      interval: 10s
       timeout: 5s
       retries: 5
-    networks:
-      - notifier-network
+      start_period: 30s
+    restart: unless-stopped
 
   db-migrator:
     image: migrate/migrate
@@ -67,7 +78,7 @@ services:
     ports:
       - "6379:6379"
     networks:
-      - notifier-network
+      - app-network
 
   rabbitmq:
     image: rabbitmq:3-management-alpine
@@ -79,8 +90,8 @@ services:
       - "5672:5672"
       - "15672:15672"
     networks:
-      - notifier-network
+      - app-network
 
 networks:
-  notifier-network:
+  app-network:
     driver: bridge
