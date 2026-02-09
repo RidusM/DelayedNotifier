@@ -34,6 +34,10 @@ func (s *EmailSender) Send(ctx context.Context, n entity.Notification) error {
 		return fmt.Errorf("%s: %w", op, err)
 	}
 
+	if len(n.RecipientIdentifier) > 254 {
+		return fmt.Errorf("%s: recipient email too long (max 254 chars): %w", op, entity.ErrInvalidData)
+	}
+
 	var payload struct {
 		Subject string `json:"subject"`
 		Body    string `json:"body"`
@@ -48,12 +52,17 @@ func (s *EmailSender) Send(ctx context.Context, n entity.Notification) error {
 		}
 	}
 
+	if len(payload.Body) > 100000 {
+		return fmt.Errorf("%s: email body too large (max 100KB): %w", op, entity.ErrInvalidData)
+	}
+	if len(payload.Subject) > 255 {
+		return fmt.Errorf("%s: email subject too long (max 255 chars): %w", op, entity.ErrInvalidData)
+	}
+
 	m := gomail.NewMessage()
 	m.SetHeader("From", s.from)
 	m.SetHeader("To", n.RecipientIdentifier)
-
 	m.SetHeader("Subject", mime.QEncoding.Encode("utf-8", payload.Subject))
-
 	m.SetBody("text/html", payload.Body)
 
 	s.log.LogAttrs(ctx, logger.DebugLevel, "sending email",

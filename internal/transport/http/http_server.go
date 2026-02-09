@@ -35,6 +35,7 @@ func NewHTTPServer(
 			WriteTimeout:      cfg.WriteTimeout,
 			IdleTimeout:       cfg.IdleTimeout,
 			ReadHeaderTimeout: cfg.ReadHeaderTimeout,
+			MaxHeaderBytes:    cfg.MaxHeaderBytes,
 		},
 		shutdownTimeout: cfg.ShutdownTimeout,
 		log:             log,

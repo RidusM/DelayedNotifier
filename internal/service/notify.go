@@ -509,6 +509,11 @@ func (s *NotifyService) validateCreateRequest(req CreateNotificationRequest) err
 	if req.ScheduledAt.IsZero() {
 		return fmt.Errorf("scheduled_at is required: %w", entity.ErrInvalidData)
 	}
+	if req.Channel == entity.Email {
+		if len(req.Payload) > 100000 {
+			return fmt.Errorf("email payload too large (max 100KB): %w", entity.ErrInvalidData)
+		}
+	}
 	return nil
 }
 
