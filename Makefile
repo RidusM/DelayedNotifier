@@ -50,12 +50,14 @@ linter-golangci: ## Run golangci-lint linter
 .PHONY: linter-hadolint
 linter-hadolint: ## Run hadolint on Dockerfiles (requires hadolint installed)
 	hadolint Dockerfile
-	hadolint Dockerfile.producer
-	hadolint tests/integration/Dockerfile
 
 .PHONY: linter-dotenv
 linter-dotenv: ## Run dotenv-linter on .env files (requires dotenv-linter installed)
-	dotenv-linter -r || echo "dotenv-linter not found or issues found in .env files"
+	dotenv-linter check -r .
+
+.PHONY: dotenv-fix
+dotenv-fix: ## Fix .env files (requires dotenv-linter installed)
+	dotenv-linter fix --no-backup -r .
 
 .PHONY: swag-v1
 swag-v1: ## Generate Swagger documentation
@@ -64,28 +66,26 @@ swag-v1: ## Generate Swagger documentation
 	@echo "Swagger documentation generated."
 
 .PHONY: mock
-mock: ## Generate mocks using mockgen
+mock: ## Generate mocks in target directories
 	@echo "Generating mocks..."
-	mockgen -source ./internal/service/service.go -destination ./internal/repository/mock/repository.go -package=mock_repository
-	mockgen -source ./pkg/cache/cache.go -destination ./pkg/cache/mock/cache.go -package=mock_cache
-	mockgen -source ./pkg/logger/logger.go -destination ./pkg/logger/mock/logger.go -package=mock_logger
-	mockgen -source ./pkg/metric/metrics.go -destination ./pkg/metric/mock/metrics.go -package=mock_metric
-	mockgen -source ./pkg/storage/postgres/transaction/manager.go -destination ./pkg/storage/postgres/transaction/mock/transaction.go -package=mock_transaction
-	@echo "Mocks generated."
+	mockgen -package=mock_repository -destination=internal/repository/mock/user_repository_mock.go \
+		delayednotifier/internal/service UserRepository
+	mockgen -package=mock_repository -destination=internal/repository/mock/notify_repository_mock.go \
+		delayednotifier/internal/service NotifyRepository
+	mockgen -package=mock_repository -destination=internal/repository/mock/cache_repository_mock.go \
+		delayednotifier/internal/service CacheRepository
+	mockgen -package=mock_sender -destination=internal/transport/sender/mock/sender_mock.go \
+		delayednotifier/internal/service NotificationSender
+	@echo "Mocks generated successfully:"
 
 .PHONY: run
-run: deps swag-v1 ## Run the application locally (requires dependencies like DB/Kafka to be running)
+run: deps swag-v1 ## Run the application locally (requires dependencies like DB/Rabbit to be running)
 	@echo "Running application..."
-	go run -tags migrate ./cmd/order-service -config=./configs/dev.env
-
-.PHONY: run-producer
-run-producer: deps ## Run the Kafka producer script locally (requires Kafka to be running)
-	@echo "Running Kafka producer..."
-	go run ./cmd/producer-service
+	go run -tags migrate ./cmd/delayed-notifier -config=./configs/dev.env
 
 .PHONY: compose-up
-compose-up: ## Run infrastructure (db, kafka, zookeeper) only
-	$(BASE_STACK) up --build -d db kafka zookeeper
+compose-up: ## Run infrastructure (db, redis, rabbitmq) only
+	$(BASE_STACK) up --build -d db redis rabbitmq
 	$(BASE_STACK) logs -f
 
 .PHONY: migrate-up
@@ -115,7 +115,6 @@ test: ## Run unit tests with race detector and coverage
 	@echo "Running unit tests..."
 	go clean -testcache
 	go test -v -race -covermode atomic -coverprofile=coverage_internal.txt ./internal/...
-	go test -v -race -covermode atomic -coverprofile=coverage_pkg.txt ./pkg/...
 	@echo "Unit tests completed."
 
 .PHONY: integration-test
@@ -128,33 +127,27 @@ integration-test: ## Run integration tests (requires Docker)
 	@echo "Integration tests completed."
 
 .PHONY: pre-commit
-pre-commit: swag-v1 mock format linter-golangci test ## Run checks typically done before committing
+pre-commit: swag-v1 mock format linter-golangci linter-dotenv linter-hadolint test ## Run checks typically done before committing
 	@echo "Pre-commit checks passed."
 
 .PHONY: build
 build: deps ## Build the main application binary
 	@echo "Building application binary..."
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o ./bin/order-service ./cmd/order-service
-	@echo "Binary built: ./bin/order-service"
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o ./bin/delayed-notifier ./cmd/delayed-notifier
+	@echo "Binary built: ./bin/delayed-notifier"
 
 .PHONY: build-docker
 build-docker: ## Build main Docker image
 	@echo "Building main Docker image..."
-	docker build -t order-service:latest .
+	docker build -t delayed-notifier:latest .
 	@echo "Main Docker image built."
-
-.PHONY: build-producer-docker
-build-producer-docker: ## Build Kafka producer Docker image
-	@echo "Building Kafka producer Docker image..."
-	docker build -f Dockerfile.producer -t kafka-producer:latest .
-	@echo "Kafka producer Docker image built."
 
 .PHONY: clean
 clean: ## Remove generated files and binaries
 	@echo "Cleaning up..."
 	rm -rf ./bin/
 	rm -rf ./docs/ # Swagger docs
-	find . -name "*mock*" -type f -path "*/mock/*" -delete 
+	find . -name "*mock*" -type f -path "*/mock/*" -delete
 	@echo "Cleanup completed."
 
 .PHONY: docker-prune
@@ -166,7 +159,5 @@ docker-prune: ## Remove unused Docker data (stopped containers, networks, images
 .PHONY: docker-rm-volume
 docker-rm-volume: ## Remove Docker volume (example for pgdata)
 	@echo "Removing Docker volume 'pgdata'..."
-	docker volume rm l0_pgdata 
-	docker volume rm l0_prometheus_data
-	docker volume rm l0_grafana_data
+	docker volume rm l0_pgdata
 	@echo "Volume removal attempted."

@@ -14,6 +14,12 @@ import (
 	"github.com/wb-go/wbf/logger"
 )
 
+const (
+	_maxIdleConns        = 10
+	_idleConnTimeout     = 30 * time.Second
+	_tlsHandshakeTimeout = 5 * time.Second
+)
+
 type TelegramSender struct {
 	bot *tgbotapi.BotAPI
 	log logger.Logger
@@ -21,11 +27,11 @@ type TelegramSender struct {
 
 func NewTelegramSender(botToken string, log logger.Logger) (*TelegramSender, error) {
 	client := &http.Client{
-		Timeout: 10 * time.Second,
+		Timeout: _defaultTimeout,
 		Transport: &http.Transport{
-			MaxIdleConns:        10,
-			IdleConnTimeout:     30 * time.Second,
-			TLSHandshakeTimeout: 5 * time.Second,
+			MaxIdleConns:        _maxIdleConns,
+			IdleConnTimeout:     _idleConnTimeout,
+			TLSHandshakeTimeout: _tlsHandshakeTimeout,
 		},
 	}
 
@@ -56,7 +62,7 @@ func (s *TelegramSender) Send(ctx context.Context, n entity.Notification) error 
 	var payload struct {
 		Body string `json:"body"`
 	}
-	if err := json.Unmarshal([]byte(n.Payload), &payload); err == nil && payload.Body != "" {
+	if unmarshErr := json.Unmarshal([]byte(n.Payload), &payload); unmarshErr == nil && payload.Body != "" {
 		textToSend = payload.Body
 	}
 

@@ -13,6 +13,12 @@ import (
 	"gopkg.in/gomail.v2"
 )
 
+const (
+	_maxSubjectLength = 255
+	_maxEmailLength   = 254
+	_maxPayloadSize   = 100_000
+)
+
 type EmailSender struct {
 	dialer *gomail.Dialer
 	from   string
@@ -34,7 +40,7 @@ func (s *EmailSender) Send(ctx context.Context, n entity.Notification) error {
 		return fmt.Errorf("%s: %w", op, err)
 	}
 
-	if len(n.RecipientIdentifier) > 254 {
+	if len(n.RecipientIdentifier) > _maxEmailLength {
 		return fmt.Errorf("%s: recipient email too long (max 254 chars): %w", op, entity.ErrInvalidData)
 	}
 
@@ -46,16 +52,14 @@ func (s *EmailSender) Send(ctx context.Context, n entity.Notification) error {
 	if err := json.Unmarshal([]byte(n.Payload), &payload); err != nil {
 		payload.Body = n.Payload
 		payload.Subject = "Notification"
-	} else {
-		if payload.Subject == "" {
-			payload.Subject = "Notification"
-		}
+	} else if payload.Subject == "" {
+		payload.Subject = "Notification"
 	}
 
-	if len(payload.Body) > 100000 {
+	if len(payload.Body) > _maxPayloadSize {
 		return fmt.Errorf("%s: email body too large (max 100KB): %w", op, entity.ErrInvalidData)
 	}
-	if len(payload.Subject) > 255 {
+	if len(payload.Subject) > _maxSubjectLength {
 		return fmt.Errorf("%s: email subject too long (max 255 chars): %w", op, entity.ErrInvalidData)
 	}
 
@@ -84,7 +88,7 @@ func (s *EmailSender) Send(ctx context.Context, n entity.Notification) error {
 		return nil
 	case <-ctx.Done():
 		return fmt.Errorf("%s: %w", op, ctx.Err())
-	case <-time.After(10 * time.Second):
+	case <-time.After(_defaultTimeout):
 		return fmt.Errorf("%s: timeout after 10s", op)
 	}
 }

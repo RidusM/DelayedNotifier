@@ -23,6 +23,10 @@ const (
 	_defaultMaxRetries      = 3
 	_defaultQueryLimit      = 10
 	_defaultRetryDelay      = 5 * time.Minute
+
+	_maxPayloadSize   = 100_000
+	_defaultTimeout   = 2 * time.Second
+	_maxRetryExponent = 6
 )
 
 var (
@@ -172,7 +176,7 @@ func NewNotifyService(
 func (s *NotifyService) Create(ctx context.Context, req CreateNotificationRequest) (uuid.UUID, error) {
 	const op = "service.notify.Create"
 
-	log := s.log.Ctx(ctx)
+	log := s.log.Ctx(ctx).With("op", op)
 	startTime := time.Now()
 
 	defer s.logSlowOperation(ctx, op, startTime, map[string]any{
@@ -181,7 +185,6 @@ func (s *NotifyService) Create(ctx context.Context, req CreateNotificationReques
 	})
 
 	log.LogAttrs(ctx, logger.InfoLevel, "create notification started",
-		logger.String("op", op),
 		logger.String("user_id", req.UserID.String()),
 		logger.String("channel", string(req.Channel)),
 		logger.Time("scheduled_at", req.ScheduledAt),
@@ -193,12 +196,11 @@ func (s *NotifyService) Create(ctx context.Context, req CreateNotificationReques
 		return uuid.Nil, fmt.Errorf("%s: v7 uuid: %w", op, err)
 	}
 
-	if err := s.validateCreateRequest(req); err != nil {
+	if validErr := s.validateCreateRequest(req); validErr != nil {
 		log.LogAttrs(ctx, logger.ErrorLevel, "validation failed",
-			logger.String("op", op),
-			logger.Any("error", err),
+			logger.Any("error", validErr),
 		)
-		return uuid.Nil, fmt.Errorf("%s: %w", op, err)
+		return uuid.Nil, fmt.Errorf("%s: %w", op, validErr)
 	}
 
 	scheduledAt := req.ScheduledAt
@@ -228,14 +230,12 @@ func (s *NotifyService) Create(ctx context.Context, req CreateNotificationReques
 	})
 	if err != nil {
 		log.LogAttrs(ctx, logger.ErrorLevel, "creation failed",
-			logger.String("op", op),
 			logger.Any("error", err),
 		)
 		return uuid.Nil, fmt.Errorf("%s: %w", op, err)
 	}
 
 	log.LogAttrs(ctx, logger.InfoLevel, "notification created",
-		logger.String("op", op),
 		logger.Duration("duration", time.Since(startTime)),
 	)
 
@@ -253,14 +253,12 @@ func (s *NotifyService) GetStatus(ctx context.Context, id uuid.UUID) (*entity.No
 	})
 
 	log.LogAttrs(ctx, logger.InfoLevel, "get status requested",
-		logger.String("op", op),
 		logger.String("id", id.String()),
 	)
 
 	cacheKey := s.cache.GetCacheKey(id)
 	if cached, err := s.cache.GetFromCache(ctx, cacheKey); err == nil && cached != nil {
 		log.LogAttrs(ctx, logger.InfoLevel, "served from cache",
-			logger.String("op", op),
 			logger.String("id", id.String()),
 			logger.Duration("duration", time.Since(startTime)),
 		)
@@ -270,7 +268,6 @@ func (s *NotifyService) GetStatus(ctx context.Context, id uuid.UUID) (*entity.No
 	notification, err := s.notifyRepo.GetByID(ctx, nil, id, false)
 	if err != nil {
 		log.LogAttrs(ctx, logger.ErrorLevel, "failed to get from database",
-			logger.String("op", op),
 			logger.Any("error", err),
 		)
 		if errors.Is(err, entity.ErrDataNotFound) {
@@ -282,7 +279,6 @@ func (s *NotifyService) GetStatus(ctx context.Context, id uuid.UUID) (*entity.No
 	_ = s.cache.SaveToCache(ctx, cacheKey, notification)
 
 	log.LogAttrs(ctx, logger.InfoLevel, "served from database",
-		logger.String("op", op),
 		logger.String("id", id.String()),
 		logger.String("status", notification.Status.String()),
 		logger.Duration("duration", time.Since(startTime)),
@@ -294,7 +290,7 @@ func (s *NotifyService) GetStatus(ctx context.Context, id uuid.UUID) (*entity.No
 func (s *NotifyService) Cancel(ctx context.Context, id uuid.UUID) error {
 	const op = "service.notify.Cancel"
 
-	log := s.log.Ctx(ctx)
+	log := s.log.Ctx(ctx).With("op", op)
 	startTime := time.Now()
 
 	defer s.logSlowOperation(ctx, op, startTime, map[string]any{
@@ -302,7 +298,6 @@ func (s *NotifyService) Cancel(ctx context.Context, id uuid.UUID) error {
 	})
 
 	log.LogAttrs(ctx, logger.InfoLevel, "cancel requested",
-		logger.String("op", op),
 		logger.String("id", id.String()),
 	)
 
@@ -331,7 +326,6 @@ func (s *NotifyService) Cancel(ctx context.Context, id uuid.UUID) error {
 	})
 	if err != nil {
 		log.LogAttrs(ctx, logger.ErrorLevel, "cancel failed",
-			logger.String("op", op),
 			logger.Any("error", err),
 		)
 		return fmt.Errorf("%s: %w", op, err)
@@ -340,7 +334,6 @@ func (s *NotifyService) Cancel(ctx context.Context, id uuid.UUID) error {
 	_ = s.cache.InvalidateCache(ctx, id)
 
 	log.LogAttrs(ctx, logger.InfoLevel, "notification cancelled",
-		logger.String("op", op),
 		logger.String("id", id.String()),
 		logger.Duration("duration", time.Since(startTime)),
 	)
@@ -351,12 +344,11 @@ func (s *NotifyService) Cancel(ctx context.Context, id uuid.UUID) error {
 func (s *NotifyService) ProcessQueue(ctx context.Context) (*ProcessingStats, error) {
 	const op = "service.notify.ProcessQueue"
 
-	log := s.log.Ctx(ctx)
+	log := s.log.Ctx(ctx).With("op", op)
 	startTime := time.Now()
 	stats := &ProcessingStats{}
 
 	log.LogAttrs(ctx, logger.InfoLevel, "queue processing started",
-		logger.String("op", op),
 		logger.Uint64("query_limit", s.queryLimit),
 	)
 
@@ -366,14 +358,11 @@ func (s *NotifyService) ProcessQueue(ctx context.Context) (*ProcessingStats, err
 	}
 
 	if len(notifications) == 0 {
-		log.LogAttrs(ctx, logger.DebugLevel, "no notifications to process",
-			logger.String("op", op),
-		)
+		log.LogAttrs(ctx, logger.DebugLevel, "no notifications to process")
 		return stats, nil
 	}
 
 	log.LogAttrs(ctx, logger.InfoLevel, "processing notifications",
-		logger.String("op", op),
 		logger.Int("count", len(notifications)),
 	)
 
@@ -383,7 +372,6 @@ func (s *NotifyService) ProcessQueue(ctx context.Context) (*ProcessingStats, err
 		})
 		if err != nil {
 			log.LogAttrs(ctx, logger.ErrorLevel, "failed to mark notification as in_process",
-				logger.String("op", op),
 				logger.String("id", n.ID.String()),
 				logger.Any("error", err),
 			)
@@ -393,7 +381,6 @@ func (s *NotifyService) ProcessQueue(ctx context.Context) (*ProcessingStats, err
 
 		if pubErr := s.publishToQueue(ctx, n); pubErr != nil {
 			log.LogAttrs(ctx, logger.ErrorLevel, "failed to publish to queue",
-				logger.String("op", op),
 				logger.String("id", n.ID.String()),
 				logger.Any("error", pubErr),
 			)
@@ -406,7 +393,6 @@ func (s *NotifyService) ProcessQueue(ctx context.Context) (*ProcessingStats, err
 	stats.Duration = time.Since(startTime)
 
 	log.LogAttrs(ctx, logger.InfoLevel, "queue processing completed",
-		logger.String("op", op),
 		logger.Int("processed", stats.Processed),
 		logger.Int("failed", stats.Failed),
 		logger.Duration("duration", stats.Duration),
@@ -419,20 +405,18 @@ func (s *NotifyService) GetWorkerHandler() rabbitmq.MessageHandler {
 	return func(ctx context.Context, msg amqp091.Delivery) error {
 		const op = "service.notify.WorkerHandler"
 
-		log := s.log.Ctx(ctx)
+		log := s.log.Ctx(ctx).With("op", op)
 		startTime := time.Now()
 
 		var notification entity.Notification
 		if err := json.Unmarshal(msg.Body, &notification); err != nil {
 			log.LogAttrs(ctx, logger.ErrorLevel, "unmarshal failed",
-				logger.String("op", op),
 				logger.Any("error", err),
 			)
 			return fmt.Errorf("%s: unmarshal: %w", op, err)
 		}
 
 		log.LogAttrs(ctx, logger.InfoLevel, "processing notification",
-			logger.String("op", op),
 			logger.String("id", notification.ID.String()),
 			logger.String("channel", string(notification.Channel)),
 			logger.String("recipient", notification.RecipientIdentifier),
@@ -442,7 +426,6 @@ func (s *NotifyService) GetWorkerHandler() rabbitmq.MessageHandler {
 		if err != nil {
 			if errors.Is(err, entity.ErrDataNotFound) {
 				log.LogAttrs(ctx, logger.WarnLevel, "notification not found, skipping",
-					logger.String("op", op),
 					logger.String("id", notification.ID.String()),
 				)
 				return nil
@@ -452,7 +435,6 @@ func (s *NotifyService) GetWorkerHandler() rabbitmq.MessageHandler {
 
 		if current.Status != entity.StatusInProcess {
 			log.LogAttrs(ctx, logger.InfoLevel, "notification status changed before processing, skipping",
-				logger.String("op", op),
 				logger.String("id", notification.ID.String()),
 				logger.String("current_status", current.Status.String()),
 				logger.String("expected_status", entity.StatusInProcess.String()),
@@ -462,20 +444,18 @@ func (s *NotifyService) GetWorkerHandler() rabbitmq.MessageHandler {
 
 		sendErr := s.sendNotification(ctx, notification)
 
-		if err := s.updateAfterSend(ctx, notification.ID, sendErr); err != nil {
+		if updErr := s.updateAfterSend(ctx, notification.ID, sendErr); updErr != nil {
 			log.LogAttrs(ctx, logger.ErrorLevel, "failed to update status after send",
-				logger.String("op", op),
 				logger.String("id", notification.ID.String()),
-				logger.Any("error", err),
+				logger.Any("error", updErr),
 			)
-			return err
+			return fmt.Errorf("%s: update after send: %w", op, updErr)
 		}
 
 		_ = s.cache.InvalidateCache(ctx, notification.ID)
 
 		if sendErr != nil {
 			log.LogAttrs(ctx, logger.ErrorLevel, "send failed",
-				logger.String("op", op),
 				logger.String("id", notification.ID.String()),
 				logger.Any("error", sendErr),
 				logger.Duration("duration", time.Since(startTime)),
@@ -484,7 +464,6 @@ func (s *NotifyService) GetWorkerHandler() rabbitmq.MessageHandler {
 		}
 
 		log.LogAttrs(ctx, logger.InfoLevel, "notification sent successfully",
-			logger.String("op", op),
 			logger.String("id", notification.ID.String()),
 			logger.Duration("duration", time.Since(startTime)),
 		)
@@ -510,7 +489,7 @@ func (s *NotifyService) validateCreateRequest(req CreateNotificationRequest) err
 		return fmt.Errorf("scheduled_at is required: %w", entity.ErrInvalidData)
 	}
 	if req.Channel == entity.Email {
-		if len(req.Payload) > 100000 {
+		if len(req.Payload) > _maxPayloadSize {
 			return fmt.Errorf("email payload too large (max 100KB): %w", entity.ErrInvalidData)
 		}
 	}
@@ -523,7 +502,7 @@ func (s *NotifyService) publishToQueue(
 ) error {
 	const op = "service.notify.publishToQueue"
 
-	pubCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	pubCtx, cancel := context.WithTimeout(ctx, _defaultTimeout)
 	defer cancel()
 
 	payload, err := json.Marshal(notification)
@@ -590,7 +569,7 @@ func (s *NotifyService) sendNotification(ctx context.Context, notification entit
 func (s *NotifyService) updateAfterSend(ctx context.Context, id uuid.UUID, sendErr error) error {
 	const op = "service.notify.updateAfterSend"
 
-	log := s.log.Ctx(ctx)
+	log := s.log.Ctx(ctx).With("op", op)
 	err := s.tm.ExecuteInTransaction(ctx, "update_after_send", func(tx pgxdriver.QueryExecuter) error {
 		if sendErr == nil {
 			return s.notifyRepo.UpdateStatus(ctx, tx, id, entity.StatusSent, nil)
@@ -600,7 +579,6 @@ func (s *NotifyService) updateAfterSend(ctx context.Context, id uuid.UUID, sendE
 	})
 	if err != nil {
 		log.LogAttrs(ctx, logger.ErrorLevel, "failed to update notification status after send",
-			logger.String("op", op),
 			logger.Any("error", err),
 		)
 		return fmt.Errorf("%s: %w", op, err)
@@ -656,8 +634,14 @@ func (s *NotifyService) calculateNextAttempt(retryCount int) time.Time {
 	if retryCount < 0 {
 		retryCount = 0
 	}
-	multiplier := 1 << min(retryCount, 6)
-	delay := min(s.retryDelay*time.Duration(multiplier), 24*time.Hour)
+
+	// multiplier = 2 ^ retryCount (но не более 2^6)
+	multiplier := 1 << min(retryCount, _maxRetryExponent)
+
+	// delay = base_delay * multiplier
+	// Но результат не может превысить _defaultRetryDelay (5 минут)
+	delay := min(s.retryDelay*time.Duration(multiplier), _defaultRetryDelay)
+
 	return time.Now().UTC().Add(delay)
 }
 

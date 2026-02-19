@@ -3,8 +3,13 @@ package sender
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"delayednotifier/internal/entity"
+)
+
+const (
+	_defaultTimeout = 10 * time.Second
 )
 
 type NotificationSender interface {
@@ -37,5 +42,9 @@ func (s *MultiSender) Send(ctx context.Context, n entity.Notification) error {
 		return fmt.Errorf("%s: no sender registered for channel %q", op, n.Channel)
 	}
 
-	return sender.Send(ctx, n)
+	err := sender.Send(ctx, n)
+	if err != nil {
+		return fmt.Errorf("%s: %w", op, err)
+	}
+	return nil
 }

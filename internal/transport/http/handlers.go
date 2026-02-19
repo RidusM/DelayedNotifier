@@ -27,10 +27,9 @@ import (
 func (h *NotifyHandler) CreateNotification(c *gin.Context) {
 	const op = "transport.http.NotifyHandler.CreateNotification"
 	ctx := c.Request.Context()
-	log := h.log.Ctx(ctx)
+	log := h.log.Ctx(ctx).With("op", op)
 
 	log.LogAttrs(ctx, logger.InfoLevel, "create notification request received",
-		logger.String("op", op),
 		logger.String("method", c.Request.Method),
 		logger.String("path", c.Request.URL.Path),
 		logger.String("remote_addr", c.Request.RemoteAddr),
@@ -39,7 +38,6 @@ func (h *NotifyHandler) CreateNotification(c *gin.Context) {
 	var req CreateNotificationRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		log.LogAttrs(ctx, logger.ErrorLevel, "invalid request body",
-			logger.String("op", op),
 			logger.Any("error", err),
 		)
 		h.respondError(c, http.StatusBadRequest, "invalid_request", "Invalid JSON format", err)
@@ -49,7 +47,6 @@ func (h *NotifyHandler) CreateNotification(c *gin.Context) {
 	userID, err := uuid.Parse(req.UserID)
 	if err != nil {
 		log.LogAttrs(ctx, logger.ErrorLevel, "invalid user_id",
-			logger.String("op", op),
 			logger.String("user_id", req.UserID),
 		)
 		h.respondError(c, http.StatusBadRequest, "invalid_user_id", "User ID must be a valid UUID", err)
@@ -59,7 +56,6 @@ func (h *NotifyHandler) CreateNotification(c *gin.Context) {
 	channel := entity.Channel(req.Channel)
 	if !isValidChannel(channel) {
 		log.LogAttrs(ctx, logger.ErrorLevel, "invalid channel",
-			logger.String("op", op),
 			logger.String("channel", req.Channel),
 		)
 		h.respondError(c, http.StatusBadRequest, "invalid_channel",
@@ -101,7 +97,6 @@ func (h *NotifyHandler) CreateNotification(c *gin.Context) {
 	}
 
 	log.LogAttrs(ctx, logger.InfoLevel, "notification created successfully",
-		logger.String("op", op),
 		logger.String("user_id", req.UserID),
 		logger.String("channel", req.Channel),
 		logger.String("notification_id", notificationID.String()),
@@ -125,13 +120,12 @@ func (h *NotifyHandler) CreateNotification(c *gin.Context) {
 func (h *NotifyHandler) GetStatus(c *gin.Context) {
 	const op = "transport.http.NotifyHandler.GetStatus"
 	ctx := c.Request.Context()
-	log := h.log.Ctx(ctx)
+	log := h.log.Ctx(ctx).With("op", op)
 
 	idStr := c.Param("id")
 	id, err := uuid.Parse(idStr)
 	if err != nil {
 		log.LogAttrs(ctx, logger.ErrorLevel, "invalid notification id",
-			logger.String("op", op),
 			logger.String("id", idStr),
 		)
 		h.respondError(c, http.StatusBadRequest, "invalid_id", "Invalid notification ID format", err)
@@ -139,7 +133,6 @@ func (h *NotifyHandler) GetStatus(c *gin.Context) {
 	}
 
 	log.LogAttrs(ctx, logger.InfoLevel, "get status request received",
-		logger.String("op", op),
 		logger.String("id", id.String()),
 	)
 
@@ -163,7 +156,6 @@ func (h *NotifyHandler) GetStatus(c *gin.Context) {
 	}
 
 	log.LogAttrs(ctx, logger.InfoLevel, "status retrieved successfully",
-		logger.String("op", op),
 		logger.String("id", id.String()),
 		logger.String("status", notification.Status.String()),
 	)
@@ -186,13 +178,12 @@ func (h *NotifyHandler) GetStatus(c *gin.Context) {
 func (h *NotifyHandler) Cancel(c *gin.Context) {
 	const op = "transport.http.NotifyHandler.Cancel"
 	ctx := c.Request.Context()
-	log := h.log.Ctx(ctx)
+	log := h.log.Ctx(ctx).With("op", op)
 
 	idStr := c.Param("id")
 	id, err := uuid.Parse(idStr)
 	if err != nil {
 		log.LogAttrs(ctx, logger.ErrorLevel, "invalid notification id",
-			logger.String("op", op),
 			logger.String("id", idStr),
 		)
 		h.respondError(c, http.StatusBadRequest, "invalid_id", "Invalid notification ID format", err)
@@ -200,7 +191,6 @@ func (h *NotifyHandler) Cancel(c *gin.Context) {
 	}
 
 	log.LogAttrs(ctx, logger.InfoLevel, "cancel request received",
-		logger.String("op", op),
 		logger.String("id", id.String()),
 	)
 
@@ -210,7 +200,6 @@ func (h *NotifyHandler) Cancel(c *gin.Context) {
 	}
 
 	log.LogAttrs(ctx, logger.InfoLevel, "notification cancelled successfully",
-		logger.String("op", op),
 		logger.String("id", id.String()),
 	)
 
@@ -220,7 +209,6 @@ func (h *NotifyHandler) Cancel(c *gin.Context) {
 	h.respondJSON(c, http.StatusOK, response)
 }
 
-// Health обрабатывает GET /health
 func (h *NotifyHandler) Health(c *gin.Context) {
 	response := map[string]string{
 		"status": "ok",

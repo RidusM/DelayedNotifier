@@ -16,7 +16,7 @@ type CreateNotificationRequest struct {
 
 // swagger:model CreateNotificationResponse
 type CreateNotificationResponse struct {
-	ID          string    `json:"id" example:"550e8400-e29b-41d4-a716-446655440001"`
+	ID          string    `json:"id"           example:"550e8400-e29b-41d4-a716-446655440001"`
 	UserID      string    `json:"user_id"      example:"550e8400-e29b-41d4-a716-446655440000"`
 	Channel     string    `json:"channel"      example:"email"`
 	Payload     string    `json:"payload"      example:"Your order #123 is ready!"`

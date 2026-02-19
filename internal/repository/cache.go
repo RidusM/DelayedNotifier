@@ -40,18 +40,18 @@ func (s *CacheRepository) GetFromCache(ctx context.Context, key string) (*entity
 
 	cached, err := s.rdb.Get(ctx, key)
 	if err != nil {
-		if errors.Is(err, redis.Nil) || err == redis.Nil {
-			return nil, nil
+		if errors.Is(err, redis.Nil) {
+			return nil, entity.ErrDataNotFound
 		}
 		return nil, fmt.Errorf("%s: redis get: %w", op, err)
 	}
 	if cached == "" {
-		return nil, nil
+		return nil, entity.ErrDataNotFound
 	}
 
 	var notification entity.Notification
-	if err := json.Unmarshal([]byte(cached), &notification); err != nil {
-		return nil, fmt.Errorf("%s: unmarshal: %w", op, err)
+	if unmarshErr := json.Unmarshal([]byte(cached), &notification); unmarshErr != nil {
+		return nil, fmt.Errorf("%s: unmarshal: %w", op, unmarshErr)
 	}
 
 	return &notification, nil
@@ -65,8 +65,8 @@ func (s *CacheRepository) SaveToCache(ctx context.Context, key string, notificat
 		return fmt.Errorf("%s: marshal: %w", op, err)
 	}
 
-	if err := s.rdb.SetWithExpiration(ctx, key, data, s.ttl); err != nil {
-		return fmt.Errorf("%s: redis set: %w", op, err)
+	if setErr := s.rdb.SetWithExpiration(ctx, key, data, s.ttl); setErr != nil {
+		return fmt.Errorf("%s: redis set: %w", op, setErr)
 	}
 
 	return nil
@@ -76,7 +76,7 @@ func (s *CacheRepository) InvalidateCache(ctx context.Context, id uuid.UUID) err
 	const op = "repository.cache.InvalidateCache"
 
 	if err := s.rdb.Del(ctx, s.GetCacheKey(id)); err != nil {
-		if errors.Is(err, redis.Nil) || err == redis.Nil {
+		if errors.Is(err, redis.Nil) {
 			return nil
 		}
 		return fmt.Errorf("%s: redis del: %w", op, err)

@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	notificationColumns = "id, user_id, channel, payload, scheduled_at, sent_at, status, retry_count, last_error, created_at, recipient_identifier"
+	_notificationColumns = "id, user_id, channel, payload, scheduled_at, sent_at, status, retry_count, last_error, created_at, recipient_identifier"
 )
 
 type NotifyRepository struct {
@@ -66,7 +66,7 @@ func (r *NotifyRepository) GetByID(
 
 	executor := r.exec(qe)
 
-	query := squirrel.Select(notificationColumns).
+	query := squirrel.Select(_notificationColumns).
 		From("notifications").
 		Where(squirrel.Eq{"id": id})
 
@@ -93,7 +93,6 @@ func (r *NotifyRepository) GetByID(
 		&result.CreatedAt,
 		&result.RecipientIdentifier,
 	)
-
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, fmt.Errorf("%s: %w", op, entity.ErrDataNotFound)
@@ -117,7 +116,7 @@ func (r *NotifyRepository) GetForProcess(
 		return nil, fmt.Errorf("%s: limit must be > 0", op)
 	}
 
-	sql, args, err := r.db.Select(notificationColumns).
+	sql, args, err := r.db.Select(_notificationColumns).
 		From("notifications").
 		Where(squirrel.Eq{"status": entity.StatusWaiting}).
 		Where(squirrel.LtOrEq{"scheduled_at": time.Now().UTC()}).
@@ -185,6 +184,8 @@ func (r *NotifyRepository) UpdateStatus(
 	}
 
 	switch status {
+	case entity.StatusWaiting, entity.StatusInProcess:
+		return errors.New("cannot transition from non-terminal status")
 	case entity.StatusSent:
 		update = update.Set("sent_at", time.Now().UTC())
 	case entity.StatusFailed:
@@ -192,6 +193,8 @@ func (r *NotifyRepository) UpdateStatus(
 			Set("retry_count", squirrel.Expr("retry_count + 1"))
 	case entity.StatusCancelled:
 		update = update.Set("sent_at", nil)
+	default:
+		return fmt.Errorf("%s: unknown status: %v", op, status)
 	}
 
 	sql, args, err := update.ToSql()

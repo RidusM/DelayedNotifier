@@ -18,8 +18,12 @@ import (
 func main() {
 	defer func() {
 		if r := recover(); r != nil {
-			fmt.Fprintf(os.Stderr, "PANIC: %v\n", r)
-			os.Exit(2)
+			log, _ := logger.NewZapAdapter("delayed-notifier", "production")
+			if log != nil {
+				log.Errorw("PANIC RECOVERED", "panic", r)
+			} else {
+				fmt.Fprintf(os.Stderr, "PANIC (no logger): %v\n", r)
+			}
 		}
 	}()
 
@@ -29,13 +33,11 @@ func main() {
 	var cfg config.Config
 	if err := cleanenvport.Load(&cfg); err != nil {
 		fmt.Fprintf(os.Stderr, "critical: config load failed: %v\n", err)
-		os.Exit(1)
 	}
 
 	log, err := logger.NewZapAdapter(cfg.App.Name, cfg.Env)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "critical: logger init failed: %v\n", err)
-		os.Exit(1)
 	}
 
 	log.Infow("application starting",
@@ -44,11 +46,8 @@ func main() {
 		"pid", os.Getpid(),
 	)
 
-	if err := app.Run(ctx, &cfg, log); err != nil {
-		if !errors.Is(err, context.Canceled) {
-			log.Errorw("application crashed", "error", err)
-			os.Exit(1)
-		}
+	if err = app.Run(ctx, &cfg, log); err != nil && !errors.Is(err, context.Canceled) {
+		log.Errorw("application crashed", "error", err)
 	}
 
 	log.Infow("shutdown complete")

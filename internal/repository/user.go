@@ -2,9 +2,10 @@ package repository
 
 import (
 	"context"
-	"delayednotifier/internal/entity"
 	"errors"
 	"fmt"
+
+	"delayednotifier/internal/entity"
 
 	"github.com/Masterminds/squirrel"
 	"github.com/google/uuid"
