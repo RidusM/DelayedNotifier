@@ -66,7 +66,7 @@ func (r *NotifyRepository) GetByID(
 
 	executor := r.exec(qe)
 
-	query := squirrel.Select(_notificationColumns).
+	query := r.db.Select(_notificationColumns).
 		From("notifications").
 		Where(squirrel.Eq{"id": id})
 

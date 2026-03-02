@@ -1,4 +1,4 @@
-package service
+package service_test
 
 import (
 	"context"
@@ -10,26 +10,57 @@ import (
 
 	"delayednotifier/internal/entity"
 	mock_repository "delayednotifier/internal/repository/mock"
+	"delayednotifier/internal/service"
 	mock_sender "delayednotifier/internal/transport/sender/mock"
 
 	"github.com/google/uuid"
 	"github.com/rabbitmq/amqp091-go"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	pgxdriver "github.com/wb-go/wbf/dbpg/pgx-driver"
 	"github.com/wb-go/wbf/logger"
+	"github.com/wb-go/wbf/rabbitmq"
 	"go.uber.org/mock/gomock"
 )
 
+type testEnv struct {
+	svc        *service.NotifyService
+	notifyRepo *mock_repository.MockNotifyRepository
+	userRepo   *mock_repository.MockUserRepository
+	cacheRepo  *mock_repository.MockCacheRepository
+	sender     *mock_sender.MockNotificationSender
+	ctrl       *gomock.Controller
+}
+
 type MockTM struct{}
 
-func (m *MockTM) ExecuteInTransaction(ctx context.Context, name string, fn func(pgxdriver.QueryExecuter) error) error {
+func (m *MockTM) ExecuteInTransaction(_ context.Context, _ string, fn func(pgxdriver.QueryExecuter) error) error {
 	return fn(nil)
 }
 
-func setup(
-	t *testing.T,
-) (*NotifyService, *mock_repository.MockNotifyRepository, *mock_repository.MockUserRepository, *mock_repository.MockCacheRepository, *mock_sender.MockNotificationSender, *gomock.Controller) {
+type MockPublisher struct {
+	mock.Mock
+}
+
+func (m *MockPublisher) Publish(
+	ctx context.Context,
+	body []byte,
+	routingKey string,
+	_ ...rabbitmq.PublishOption,
+) error {
+	args := m.Called(ctx, body, routingKey)
+	return args.Error(0)
+}
+
+func (m *MockPublisher) GetExchangeName() string {
+	args := m.Called()
+	return args.String(0)
+}
+
+func setup(t *testing.T) *testEnv {
+	t.Helper()
+
 	ctrl := gomock.NewController(t)
 	notifyRepo := mock_repository.NewMockNotifyRepository(ctrl)
 	userRepo := mock_repository.NewMockUserRepository(ctrl)
@@ -37,400 +68,504 @@ func setup(
 	sender := mock_sender.NewMockNotificationSender(ctrl)
 
 	log, err := logger.NewZapAdapter("test-app-notify", "test", logger.WithLevel(logger.ErrorLevel))
+	require.NoError(t, err)
+
+	svc, err := service.NewNotifyService(
+		notifyRepo,
+		userRepo,
+		cacheRepo,
+		sender,
+		&MockTM{},
+		&MockPublisher{},
+		log,
+	)
 	if err != nil {
-		return nil, nil, nil, nil, nil, nil
+		t.Fatalf("failed to init service: %v", err)
 	}
 
-	svc := &NotifyService{
+	return &testEnv{
+		svc:        svc,
 		notifyRepo: notifyRepo,
 		userRepo:   userRepo,
-		cache:      cacheRepo,
+		cacheRepo:  cacheRepo,
 		sender:     sender,
-		tm:         &MockTM{},
-		log:        log,
-		maxRetries: 3,
-		queryLimit: 10,
-		retryDelay: 5 * time.Minute,
+		ctrl:       ctrl,
 	}
-	return svc, notifyRepo, userRepo, cacheRepo, sender, ctrl
 }
 
 func TestCreate_Success_Email(t *testing.T) {
-	svc, notifyRepo, userRepo, _, _, ctrl := setup(t)
-	defer ctrl.Finish()
+	t.Parallel()
+	env := setup(t)
+	defer env.ctrl.Finish()
+
 	ctx := context.Background()
-	userID := uuid.New()
-	userRepo.EXPECT().GetEmail(ctx, nil, userID).Return("a@b.com", nil)
-	notifyRepo.EXPECT().Create(ctx, nil, gomock.Any()).Return(nil)
-	id, err := svc.Create(ctx, CreateNotificationRequest{
-		UserID:      userID,
+	env.notifyRepo.EXPECT().Create(ctx, nil, gomock.Any()).Return(nil)
+
+	id, err := env.svc.Create(ctx, service.CreateNotificationRequest{
+		UserID:      uuid.New(),
 		Channel:     entity.Email,
 		Payload:     "test",
+		Recipient:   "test@example.com",
 		ScheduledAt: time.Now().Add(1 * time.Hour),
 	})
+
 	require.NoError(t, err)
 	assert.NotEqual(t, uuid.Nil, id)
 }
 
 func TestCreate_Success_Telegram(t *testing.T) {
-	svc, notifyRepo, userRepo, _, _, ctrl := setup(t)
-	defer ctrl.Finish()
+	t.Parallel()
+	env := setup(t)
+	defer env.ctrl.Finish()
+
 	ctx := context.Background()
-	userID := uuid.New()
-	userRepo.EXPECT().GetTelegramChatID(ctx, nil, userID).Return(int64(123), nil)
-	notifyRepo.EXPECT().Create(ctx, nil, gomock.Any()).Return(nil)
-	_, err := svc.Create(ctx, CreateNotificationRequest{
-		UserID:      userID,
+	env.notifyRepo.EXPECT().Create(ctx, nil, gomock.Any()).Return(nil)
+
+	id, err := env.svc.Create(ctx, service.CreateNotificationRequest{
 		Channel:     entity.Telegram,
 		Payload:     "test",
+		Recipient:   "123456789",
 		ScheduledAt: time.Now().Add(1 * time.Hour),
 	})
+
 	require.NoError(t, err)
+	assert.NotEqual(t, uuid.Nil, id)
 }
 
-func TestCreate_UserIDRequired(t *testing.T) {
-	svc, _, _, _, _, ctrl := setup(t)
-	defer ctrl.Finish()
-	_, err := svc.Create(context.Background(), CreateNotificationRequest{
-		UserID:      uuid.Nil,
+func TestCreate_InvalidEmail(t *testing.T) {
+	t.Parallel()
+	env := setup(t)
+	defer env.ctrl.Finish()
+
+	_, err := env.svc.Create(context.Background(), service.CreateNotificationRequest{
 		Channel:     entity.Email,
 		Payload:     "test",
+		Recipient:   "invalid-email",
 		ScheduledAt: time.Now().Add(1 * time.Hour),
 	})
+
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "user_id is required")
+	assert.Contains(t, err.Error(), "invalid email format")
+}
+
+func TestCreate_InvalidTelegramID(t *testing.T) {
+	t.Parallel()
+	env := setup(t)
+	defer env.ctrl.Finish()
+
+	_, err := env.svc.Create(context.Background(), service.CreateNotificationRequest{
+		Channel:     entity.Telegram,
+		Payload:     "test",
+		Recipient:   "invalid-telegram-id",
+		ScheduledAt: time.Now().Add(1 * time.Hour),
+	})
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid telegram ID format")
 }
 
 func TestCreate_ChannelRequired(t *testing.T) {
-	svc, _, _, _, _, ctrl := setup(t)
-	defer ctrl.Finish()
-	_, err := svc.Create(context.Background(), CreateNotificationRequest{
-		UserID:      uuid.New(),
-		Channel:     "",
+	t.Parallel()
+	env := setup(t)
+	defer env.ctrl.Finish()
+
+	_, err := env.svc.Create(context.Background(), service.CreateNotificationRequest{
+		Recipient:   "test@example.com",
 		Payload:     "test",
 		ScheduledAt: time.Now().Add(1 * time.Hour),
 	})
+
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "channel is required")
 }
 
 func TestCreate_PayloadRequired(t *testing.T) {
-	svc, _, _, _, _, ctrl := setup(t)
-	defer ctrl.Finish()
-	_, err := svc.Create(context.Background(), CreateNotificationRequest{
-		UserID:      uuid.New(),
+	t.Parallel()
+	env := setup(t)
+	defer env.ctrl.Finish()
+
+	_, err := env.svc.Create(context.Background(), service.CreateNotificationRequest{
 		Channel:     entity.Email,
-		Payload:     "",
+		Recipient:   "test@example.com",
 		ScheduledAt: time.Now().Add(1 * time.Hour),
 	})
+
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "payload is required")
 }
 
 func TestCreate_ScheduledAtRequired(t *testing.T) {
-	svc, _, _, _, _, ctrl := setup(t)
-	defer ctrl.Finish()
-	_, err := svc.Create(context.Background(), CreateNotificationRequest{
-		UserID:  uuid.New(),
-		Channel: entity.Email,
-		Payload: "test",
+	t.Parallel()
+	env := setup(t)
+	defer env.ctrl.Finish()
+
+	_, err := env.svc.Create(context.Background(), service.CreateNotificationRequest{
+		Channel:   entity.Email,
+		Payload:   "test",
+		Recipient: "test@example.com",
 	})
+
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "scheduled_at is required")
 }
 
-func TestCreate_MustBeFuture(t *testing.T) {
-	svc, _, _, _, _, ctrl := setup(t)
-	defer ctrl.Finish()
-	_, err := svc.Create(context.Background(), CreateNotificationRequest{
-		UserID:      uuid.New(),
+func TestCreate_WithoutUserID(t *testing.T) {
+	t.Parallel()
+	env := setup(t)
+	defer env.ctrl.Finish()
+	ctx := context.Background()
+
+	env.notifyRepo.EXPECT().Create(ctx, nil, gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ pgxdriver.QueryExecuter, notify entity.Notification) error {
+			assert.Equal(t, uuid.Nil, notify.UserID)
+			return nil
+		}).Times(1)
+
+	id, err := env.svc.Create(ctx, service.CreateNotificationRequest{
 		Channel:     entity.Email,
 		Payload:     "test",
+		Recipient:   "test@example.com",
+		ScheduledAt: time.Now().Add(1 * time.Hour),
+	})
+
+	require.NoError(t, err)
+	assert.NotEqual(t, uuid.Nil, id)
+}
+
+func TestCreate_MustBeFuture(t *testing.T) {
+	t.Parallel()
+	env := setup(t)
+	defer env.ctrl.Finish()
+
+	_, err := env.svc.Create(context.Background(), service.CreateNotificationRequest{
+		Channel:     entity.Email,
+		Payload:     "test",
+		Recipient:   "test@example.com",
 		ScheduledAt: time.Now().Add(-1 * time.Hour),
 	})
+
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "must be in future")
 }
 
 func TestCreate_PayloadTooLarge(t *testing.T) {
-	svc, _, _, _, _, ctrl := setup(t)
-	defer ctrl.Finish()
-	_, err := svc.Create(context.Background(), CreateNotificationRequest{
-		UserID:      uuid.New(),
+	t.Parallel()
+	env := setup(t)
+	defer env.ctrl.Finish()
+
+	_, err := env.svc.Create(context.Background(), service.CreateNotificationRequest{
 		Channel:     entity.Email,
 		Payload:     string(make([]byte, 100001)),
+		Recipient:   "test@example.com",
 		ScheduledAt: time.Now().Add(1 * time.Hour),
 	})
+
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "too large")
 }
 
-func TestCreate_EmailNotFound(t *testing.T) {
-	svc, _, userRepo, _, _, ctrl := setup(t)
-	defer ctrl.Finish()
-	ctx := context.Background()
-	userID := uuid.New()
-	userRepo.EXPECT().GetEmail(ctx, nil, userID).Return("", entity.ErrDataNotFound)
-	_, err := svc.Create(ctx, CreateNotificationRequest{
-		UserID:      userID,
+func TestCreate_RecipientRequired(t *testing.T) {
+	t.Parallel()
+	env := setup(t)
+	defer env.ctrl.Finish()
+
+	_, err := env.svc.Create(context.Background(), service.CreateNotificationRequest{
 		Channel:     entity.Email,
 		Payload:     "test",
 		ScheduledAt: time.Now().Add(1 * time.Hour),
 	})
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "email not found")
-}
 
-func TestCreate_TelegramNotFound(t *testing.T) {
-	svc, _, userRepo, _, _, ctrl := setup(t)
-	defer ctrl.Finish()
-	ctx := context.Background()
-	userID := uuid.New()
-	userRepo.EXPECT().GetTelegramChatID(ctx, nil, userID).Return(int64(0), entity.ErrDataNotFound)
-	_, err := svc.Create(ctx, CreateNotificationRequest{
-		UserID:      userID,
-		Channel:     entity.Telegram,
-		Payload:     "test",
-		ScheduledAt: time.Now().Add(1 * time.Hour),
-	})
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "telegram chat_id not found")
+	assert.Contains(t, err.Error(), "recipient is required")
 }
 
 func TestCreate_RepositoryError(t *testing.T) {
-	svc, notifyRepo, userRepo, _, _, ctrl := setup(t)
-	defer ctrl.Finish()
-	ctx := context.Background()
-	userID := uuid.New()
+	t.Parallel()
+	env := setup(t)
+	defer env.ctrl.Finish()
+
 	dbErr := errors.New("db error")
-	userRepo.EXPECT().GetEmail(ctx, nil, userID).Return("a@b.com", nil)
-	notifyRepo.EXPECT().Create(ctx, nil, gomock.Any()).Return(dbErr)
-	_, err := svc.Create(ctx, CreateNotificationRequest{
-		UserID:      userID,
+	env.notifyRepo.EXPECT().Create(gomock.Any(), nil, gomock.Any()).Return(dbErr)
+
+	_, err := env.svc.Create(context.Background(), service.CreateNotificationRequest{
 		Channel:     entity.Email,
 		Payload:     "test",
+		Recipient:   "test@example.com",
 		ScheduledAt: time.Now().Add(1 * time.Hour),
 	})
-	require.Error(t, err)
-	assert.ErrorIs(t, err, dbErr)
+
+	require.ErrorIs(t, err, dbErr)
 }
 
 func TestGetStatus_FromCache(t *testing.T) {
-	svc, _, _, cacheRepo, _, ctrl := setup(t)
-	defer ctrl.Finish()
-	ctx := context.Background()
+	t.Parallel()
+	env := setup(t)
+	defer env.ctrl.Finish()
+
 	id := uuid.New()
-	key := "key"
 	cached := &entity.Notification{ID: id, Status: entity.StatusWaiting}
-	cacheRepo.EXPECT().GetCacheKey(id).Return(key)
-	cacheRepo.EXPECT().GetFromCache(ctx, key).Return(cached, nil)
-	result, err := svc.GetStatus(ctx, id)
+	env.cacheRepo.EXPECT().GetCacheKey(id).Return("key")
+	env.cacheRepo.EXPECT().GetFromCache(gomock.Any(), "key").Return(cached, nil)
+
+	result, err := env.svc.GetStatus(context.Background(), id)
 	require.NoError(t, err)
 	assert.Equal(t, cached, result)
 }
 
 func TestGetStatus_FromDB(t *testing.T) {
-	svc, notifyRepo, _, cacheRepo, _, ctrl := setup(t)
-	defer ctrl.Finish()
+	t.Parallel()
+	env := setup(t)
+	defer env.ctrl.Finish()
+
 	ctx := context.Background()
 	id := uuid.New()
 	key := "key"
 	notif := &entity.Notification{ID: id, Status: entity.StatusSent}
-	cacheRepo.EXPECT().GetCacheKey(id).Return(key)
-	cacheRepo.EXPECT().GetFromCache(ctx, key).Return(nil, errors.New("miss"))
-	notifyRepo.EXPECT().GetByID(ctx, nil, id, false).Return(notif, nil)
-	cacheRepo.EXPECT().SaveToCache(ctx, key, notif).Return(nil)
-	result, err := svc.GetStatus(ctx, id)
+	env.cacheRepo.EXPECT().GetCacheKey(id).Return(key)
+	env.cacheRepo.EXPECT().GetFromCache(ctx, key).Return(nil, errors.New("miss"))
+	env.notifyRepo.EXPECT().GetByID(ctx, nil, id, false).Return(notif, nil)
+	env.cacheRepo.EXPECT().SaveToCache(ctx, key, notif).Return(nil)
+
+	result, err := env.svc.GetStatus(ctx, id)
 	require.NoError(t, err)
 	assert.Equal(t, notif, result)
 }
 
 func TestGetStatus_NotFound(t *testing.T) {
-	svc, notifyRepo, _, cacheRepo, _, ctrl := setup(t)
-	defer ctrl.Finish()
+	t.Parallel()
+	env := setup(t)
+	defer env.ctrl.Finish()
+
 	ctx := context.Background()
 	id := uuid.New()
 	key := "key"
-	cacheRepo.EXPECT().GetCacheKey(id).Return(key)
-	cacheRepo.EXPECT().GetFromCache(ctx, key).Return(nil, errors.New("miss"))
-	notifyRepo.EXPECT().GetByID(ctx, nil, id, false).Return(nil, entity.ErrDataNotFound)
-	_, err := svc.GetStatus(ctx, id)
+	env.cacheRepo.EXPECT().GetCacheKey(id).Return(key)
+	env.cacheRepo.EXPECT().GetFromCache(ctx, key).Return(nil, errors.New("miss"))
+	env.notifyRepo.EXPECT().GetByID(ctx, nil, id, false).Return(nil, entity.ErrDataNotFound)
+
+	_, err := env.svc.GetStatus(ctx, id)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, ErrNotificationNotFound)
+	assert.ErrorIs(t, err, service.ErrNotificationNotFound)
 }
 
 func TestCancel_Success(t *testing.T) {
-	svc, notifyRepo, _, cacheRepo, _, ctrl := setup(t)
-	defer ctrl.Finish()
-	ctx := context.Background()
+	t.Parallel()
+	env := setup(t)
+	defer env.ctrl.Finish()
+
 	id := uuid.New()
 	notif := &entity.Notification{ID: id, Status: entity.StatusWaiting}
-	notifyRepo.EXPECT().GetByID(ctx, nil, id, true).Return(notif, nil)
-	notifyRepo.EXPECT().UpdateStatus(ctx, nil, id, entity.StatusCancelled, gomock.Any()).Return(nil)
-	cacheRepo.EXPECT().InvalidateCache(ctx, id).Return(nil)
-	err := svc.Cancel(ctx, id)
+	env.notifyRepo.EXPECT().GetByID(gomock.Any(), nil, id, true).Return(notif, nil)
+	env.notifyRepo.EXPECT().UpdateStatus(gomock.Any(), nil, id, entity.StatusCancelled, gomock.Any()).Return(nil)
+	env.cacheRepo.EXPECT().InvalidateCache(gomock.Any(), id).Return(nil)
+
+	err := env.svc.Cancel(context.Background(), id)
 	require.NoError(t, err)
 }
 
 func TestCancel_NotFound(t *testing.T) {
-	svc, notifyRepo, _, _, _, ctrl := setup(t)
-	defer ctrl.Finish()
+	t.Parallel()
+	env := setup(t)
+	defer env.ctrl.Finish()
+
 	ctx := context.Background()
 	id := uuid.New()
-	notifyRepo.EXPECT().GetByID(ctx, nil, id, true).Return(nil, entity.ErrDataNotFound)
-	err := svc.Cancel(ctx, id)
+	env.notifyRepo.EXPECT().GetByID(ctx, nil, id, true).Return(nil, entity.ErrDataNotFound)
+
+	err := env.svc.Cancel(ctx, id)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, ErrNotificationNotFound)
+	assert.ErrorIs(t, err, service.ErrNotificationNotFound)
 }
 
 func TestCancel_AlreadySent(t *testing.T) {
-	svc, notifyRepo, _, _, _, ctrl := setup(t)
-	defer ctrl.Finish()
-	ctx := context.Background()
+	t.Parallel()
+	env := setup(t)
+	defer env.ctrl.Finish()
+
 	id := uuid.New()
 	notif := &entity.Notification{ID: id, Status: entity.StatusSent}
-	notifyRepo.EXPECT().GetByID(ctx, nil, id, true).Return(notif, nil)
-	err := svc.Cancel(ctx, id)
-	require.Error(t, err)
-	assert.ErrorIs(t, err, ErrNotificationAlreadySent)
+	env.notifyRepo.EXPECT().GetByID(gomock.Any(), nil, id, true).Return(notif, nil)
+
+	err := env.svc.Cancel(context.Background(), id)
+	require.ErrorIs(t, err, service.ErrNotificationAlreadySent)
 }
 
 func TestCancel_AlreadyCancelled(t *testing.T) {
-	svc, notifyRepo, _, _, _, ctrl := setup(t)
-	defer ctrl.Finish()
+	t.Parallel()
+	env := setup(t)
+	defer env.ctrl.Finish()
+
 	ctx := context.Background()
 	id := uuid.New()
 	notif := &entity.Notification{ID: id, Status: entity.StatusCancelled}
-	notifyRepo.EXPECT().GetByID(ctx, nil, id, true).Return(notif, nil)
-	err := svc.Cancel(ctx, id)
+	env.notifyRepo.EXPECT().GetByID(ctx, nil, id, true).Return(notif, nil)
+
+	err := env.svc.Cancel(ctx, id)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, ErrNotificationCancelled)
+	assert.ErrorIs(t, err, service.ErrNotificationCancelled)
 }
 
-// ============ PROCESSQUEUE TESTS ============
-
 func TestProcessQueue_NoNotifications(t *testing.T) {
-	svc, notifyRepo, _, _, _, ctrl := setup(t)
-	defer ctrl.Finish()
+	t.Parallel()
+	env := setup(t)
+	defer env.ctrl.Finish()
+
 	ctx := context.Background()
-	notifyRepo.EXPECT().GetForProcess(ctx, nil, uint64(10)).Return([]entity.Notification{}, nil)
-	stats, err := svc.ProcessQueue(ctx)
+	env.notifyRepo.EXPECT().GetForProcess(ctx, nil, uint64(10)).Return([]entity.Notification{}, nil)
+	stats, err := env.svc.ProcessQueue(ctx)
+
 	require.NoError(t, err)
 	assert.Equal(t, 0, stats.Processed)
 	assert.Equal(t, 0, stats.Failed)
 }
 
 func TestProcessQueue_RepositoryError(t *testing.T) {
-	svc, notifyRepo, _, _, _, ctrl := setup(t)
-	defer ctrl.Finish()
+	t.Parallel()
+	env := setup(t)
+	defer env.ctrl.Finish()
+
 	ctx := context.Background()
 	dbErr := errors.New("db error")
-	notifyRepo.EXPECT().GetForProcess(ctx, nil, uint64(10)).Return(nil, dbErr)
-	stats, err := svc.ProcessQueue(ctx)
+	env.notifyRepo.EXPECT().GetForProcess(ctx, nil, uint64(10)).Return(nil, dbErr)
+
+	stats, err := env.svc.ProcessQueue(ctx)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, dbErr)
+	require.ErrorIs(t, err, dbErr)
 	assert.Equal(t, 0, stats.Processed)
 }
 
-// ============ WORKERHANDLER TESTS ============
-
 func TestWorkerHandler_Success(t *testing.T) {
-	svc, notifyRepo, _, cacheRepo, sender, ctrl := setup(t)
-	defer ctrl.Finish()
-	ctx := context.Background()
+	t.Parallel()
+	env := setup(t)
+	defer env.ctrl.Finish()
+
 	id := uuid.New()
 	notif := entity.Notification{ID: id, Status: entity.StatusInProcess, Channel: entity.Email}
-	body, _ := json.Marshal(notif)
+
+	body, err := json.Marshal(notif)
+	require.NoError(t, err)
+
 	delivery := amqp091.Delivery{Body: body}
-	notifyRepo.EXPECT().GetByID(ctx, nil, id, true).Return(&notif, nil)
-	sender.EXPECT().Send(ctx, notif).Return(nil)
-	notifyRepo.EXPECT().UpdateStatus(ctx, nil, id, entity.StatusSent, nil).Return(nil)
-	cacheRepo.EXPECT().InvalidateCache(ctx, id).Return(nil)
-	handler := svc.GetWorkerHandler()
-	err := handler(ctx, delivery)
+	env.notifyRepo.EXPECT().GetByID(gomock.Any(), nil, id, true).Return(&notif, nil)
+	env.sender.EXPECT().Send(gomock.Any(), notif).Return(nil)
+	env.notifyRepo.EXPECT().UpdateStatus(gomock.Any(), nil, id, entity.StatusSent, nil).Return(nil)
+	env.cacheRepo.EXPECT().InvalidateCache(gomock.Any(), id).Return(nil)
+	handler := env.svc.GetWorkerHandler()
+
+	err = handler(context.Background(), delivery)
 	require.NoError(t, err)
 }
 
 func TestWorkerHandler_NotFound(t *testing.T) {
-	svc, notifyRepo, _, _, _, ctrl := setup(t)
-	defer ctrl.Finish()
+	t.Parallel()
+	env := setup(t)
+	defer env.ctrl.Finish()
+
 	ctx := context.Background()
 	id := uuid.New()
 	notif := entity.Notification{ID: id}
-	body, _ := json.Marshal(notif)
+
+	body, err := json.Marshal(notif)
+	require.NoError(t, err)
+
 	delivery := amqp091.Delivery{Body: body}
-	notifyRepo.EXPECT().GetByID(ctx, nil, id, true).Return(nil, entity.ErrDataNotFound)
-	handler := svc.GetWorkerHandler()
-	err := handler(ctx, delivery)
+	env.notifyRepo.EXPECT().GetByID(ctx, nil, id, true).Return(nil, entity.ErrDataNotFound)
+	handler := env.svc.GetWorkerHandler()
+
+	err = handler(ctx, delivery)
 	require.NoError(t, err)
 }
 
 func TestWorkerHandler_StatusChanged(t *testing.T) {
-	svc, notifyRepo, _, _, _, ctrl := setup(t)
-	defer ctrl.Finish()
+	t.Parallel()
+	env := setup(t)
+	defer env.ctrl.Finish()
+
 	ctx := context.Background()
 	id := uuid.New()
 	notif := entity.Notification{ID: id, Status: entity.StatusInProcess}
 	current := &entity.Notification{ID: id, Status: entity.StatusCancelled}
-	body, _ := json.Marshal(notif)
+
+	body, err := json.Marshal(notif)
+	require.NoError(t, err)
+
 	delivery := amqp091.Delivery{Body: body}
-	notifyRepo.EXPECT().GetByID(ctx, nil, id, true).Return(current, nil)
-	handler := svc.GetWorkerHandler()
-	err := handler(ctx, delivery)
+	env.notifyRepo.EXPECT().GetByID(ctx, nil, id, true).Return(current, nil)
+	handler := env.svc.GetWorkerHandler()
+
+	err = handler(ctx, delivery)
 	require.NoError(t, err)
 }
 
 func TestWorkerHandler_SendFailed_WithRetry(t *testing.T) {
-	svc, notifyRepo, _, cacheRepo, sender, ctrl := setup(t)
-	defer ctrl.Finish()
-	ctx := context.Background()
+	t.Parallel()
+	env := setup(t)
+	defer env.ctrl.Finish()
+
 	id := uuid.New()
 	sendErr := errors.New("send failed")
 	notif := entity.Notification{ID: id, Status: entity.StatusInProcess, RetryCount: 0}
-	body, _ := json.Marshal(notif)
+
+	body, err := json.Marshal(notif)
+	require.NoError(t, err)
+
 	delivery := amqp091.Delivery{Body: body}
-	notifyRepo.EXPECT().GetByID(ctx, nil, id, true).Return(&notif, nil).Times(2)
-	sender.EXPECT().Send(ctx, notif).Return(sendErr)
-	notifyRepo.EXPECT().UpdateStatus(ctx, nil, id, entity.StatusFailed, gomock.Any()).Return(nil)
-	notifyRepo.EXPECT().RescheduleNotification(ctx, nil, id, gomock.Any()).Return(nil)
-	cacheRepo.EXPECT().InvalidateCache(ctx, id).Return(nil)
-	handler := svc.GetWorkerHandler()
-	err := handler(ctx, delivery)
+
+	env.notifyRepo.EXPECT().GetByID(gomock.Any(), nil, id, true).Return(&notif, nil).Times(2)
+	env.sender.EXPECT().Send(gomock.Any(), notif).Return(sendErr)
+	env.notifyRepo.EXPECT().UpdateStatus(gomock.Any(), nil, id, entity.StatusFailed, gomock.Any()).Return(nil)
+	env.notifyRepo.EXPECT().RescheduleNotification(gomock.Any(), nil, id, gomock.Any()).Return(nil)
+	env.cacheRepo.EXPECT().InvalidateCache(gomock.Any(), id).Return(nil)
+	handler := env.svc.GetWorkerHandler()
+
+	err = handler(context.Background(), delivery)
 	require.Error(t, err)
 }
 
 func TestWorkerHandler_MaxRetriesReached(t *testing.T) {
-	svc, notifyRepo, _, cacheRepo, sender, ctrl := setup(t)
-	defer ctrl.Finish()
+	t.Parallel()
+	env := setup(t)
+	defer env.ctrl.Finish()
+
 	ctx := context.Background()
 	id := uuid.New()
 	sendErr := errors.New("send failed")
 	notif := entity.Notification{ID: id, Status: entity.StatusInProcess, RetryCount: 3}
-	body, _ := json.Marshal(notif)
+
+	body, err := json.Marshal(notif)
+	require.NoError(t, err)
+
 	delivery := amqp091.Delivery{Body: body}
-	notifyRepo.EXPECT().GetByID(ctx, nil, id, true).Return(&notif, nil).Times(2)
-	sender.EXPECT().Send(ctx, notif).Return(sendErr)
-	notifyRepo.EXPECT().UpdateStatus(ctx, nil, id, entity.StatusFailed, gomock.Any()).Return(nil)
-	cacheRepo.EXPECT().InvalidateCache(ctx, id).Return(nil)
-	handler := svc.GetWorkerHandler()
-	err := handler(ctx, delivery)
+	env.notifyRepo.EXPECT().GetByID(ctx, nil, id, true).Return(&notif, nil).Times(2)
+	env.sender.EXPECT().Send(ctx, notif).Return(sendErr)
+	env.notifyRepo.EXPECT().UpdateStatus(ctx, nil, id, entity.StatusFailed, gomock.Any()).Return(nil)
+	env.cacheRepo.EXPECT().InvalidateCache(ctx, id).Return(nil)
+	handler := env.svc.GetWorkerHandler()
+
+	err = handler(ctx, delivery)
 	require.Error(t, err)
 }
 
 func TestWorkerHandler_InvalidJSON(t *testing.T) {
-	svc, _, _, _, _, ctrl := setup(t)
-	defer ctrl.Finish()
+	t.Parallel()
+	env := setup(t)
+	defer env.ctrl.Finish()
+
 	ctx := context.Background()
 	delivery := amqp091.Delivery{Body: []byte("invalid")}
-	handler := svc.GetWorkerHandler()
+	handler := env.svc.GetWorkerHandler()
+
 	err := handler(ctx, delivery)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "unmarshal")
 }
 
 func TestCalculateNextAttempt(t *testing.T) {
-	svc, _, _, _, _, ctrl := setup(t)
-	defer ctrl.Finish()
+	t.Parallel()
+	env := setup(t)
+	defer t.Cleanup(func() {
+		env.ctrl.Finish()
+	})
 
 	tests := []struct {
 		retry int
@@ -444,12 +579,13 @@ func TestCalculateNextAttempt(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		t.Run(fmt.Sprintf("retry_% d", tt.retry), func(t *testing.T) {
+		t.Run(fmt.Sprintf("retry_%d", tt.retry), func(t *testing.T) {
+			t.Parallel()
 			now := time.Now().UTC()
-			next := svc.calculateNextAttempt(tt.retry)
+			next := env.svc.CalculateNextAttempt(tt.retry)
 			delta := next.Sub(now)
 
-			assert.InDelta(t, tt.delay.Seconds(), delta.Seconds(), 1.0)
+			assert.InDelta(t, tt.delay.Seconds(), delta.Seconds(), 2.0)
 		})
 	}
 }

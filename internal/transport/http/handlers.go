@@ -44,13 +44,17 @@ func (h *NotifyHandler) CreateNotification(c *gin.Context) {
 		return
 	}
 
-	userID, err := uuid.Parse(req.UserID)
-	if err != nil {
-		log.LogAttrs(ctx, logger.ErrorLevel, "invalid user_id",
-			logger.String("user_id", req.UserID),
-		)
-		h.respondError(c, http.StatusBadRequest, "invalid_user_id", "User ID must be a valid UUID", err)
-		return
+	var userID uuid.UUID
+	if req.UserID != "" {
+		var err error
+		userID, err = uuid.Parse(req.UserID)
+		if err != nil {
+			log.LogAttrs(ctx, logger.ErrorLevel, "invalid user_id",
+				logger.String("user_id", req.UserID),
+			)
+			h.respondError(c, http.StatusBadRequest, "invalid_user_id", "User ID must be a valid UUID", err)
+			return
+		}
 	}
 
 	channel := entity.Channel(req.Channel)
@@ -59,7 +63,13 @@ func (h *NotifyHandler) CreateNotification(c *gin.Context) {
 			logger.String("channel", req.Channel),
 		)
 		h.respondError(c, http.StatusBadRequest, "invalid_channel",
-			"Channel must be one of: telegram, email, sms, push", nil)
+			"Channel must be one of: telegram, email", nil)
+		return
+	}
+
+	if req.Recipient == "" {
+		h.respondError(c, http.StatusBadRequest, "invalid_recipient",
+			"Recipient is required", nil)
 		return
 	}
 
@@ -78,6 +88,7 @@ func (h *NotifyHandler) CreateNotification(c *gin.Context) {
 		UserID:      userID,
 		Channel:     channel,
 		Payload:     req.Payload,
+		Recipient:   req.Recipient,
 		ScheduledAt: req.ScheduledAt,
 	}
 
@@ -91,6 +102,7 @@ func (h *NotifyHandler) CreateNotification(c *gin.Context) {
 		ID:          notificationID.String(),
 		UserID:      req.UserID,
 		Channel:     req.Channel,
+		Recipient:   req.Recipient,
 		Payload:     req.Payload,
 		ScheduledAt: req.ScheduledAt,
 		Message:     "Notification created successfully",
@@ -99,6 +111,7 @@ func (h *NotifyHandler) CreateNotification(c *gin.Context) {
 	log.LogAttrs(ctx, logger.InfoLevel, "notification created successfully",
 		logger.String("user_id", req.UserID),
 		logger.String("channel", req.Channel),
+		logger.String("recipient", req.Recipient),
 		logger.String("notification_id", notificationID.String()),
 	)
 

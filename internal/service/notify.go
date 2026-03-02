@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"delayednotifier/internal/entity"
@@ -111,13 +112,23 @@ type (
 		) error
 	}
 
+	PublisherInterface interface {
+		Publish(
+			ctx context.Context,
+			body []byte,
+			routingKey string,
+			opts ...rabbitmq.PublishOption,
+		) error
+		GetExchangeName() string
+	}
+
 	NotifyService struct {
 		notifyRepo NotifyRepository
 		userRepo   UserRepository
 		cache      CacheRepository
 		sender     NotificationSender
 		tm         transaction.Manager
-		publisher  *rabbitmq.Publisher
+		publisher  PublisherInterface
 		log        logger.Logger
 
 		queryLimit uint64
@@ -130,6 +141,7 @@ type (
 		UserID      uuid.UUID
 		Channel     entity.Channel
 		Payload     string
+		Recipient   string
 		ScheduledAt time.Time
 	}
 
@@ -146,7 +158,7 @@ func NewNotifyService(
 	cache CacheRepository,
 	sender NotificationSender,
 	tm transaction.Manager,
-	publisher *rabbitmq.Publisher,
+	publisher PublisherInterface,
 	log logger.Logger,
 	opts ...Option,
 ) (*NotifyService, error) {
@@ -208,16 +220,11 @@ func (s *NotifyService) Create(ctx context.Context, req CreateNotificationReques
 		return uuid.Nil, fmt.Errorf("scheduled time must be in future: %w", entity.ErrInvalidData)
 	}
 
-	recipient, err := s.getRecipientIdentifier(ctx, req.UserID, req.Channel)
-	if err != nil {
-		return uuid.Nil, fmt.Errorf("resolve recipient: %w", err)
-	}
-
 	notification := entity.Notification{
 		UserID:              req.UserID,
 		Channel:             req.Channel,
 		Payload:             req.Payload,
-		RecipientIdentifier: recipient,
+		RecipientIdentifier: req.Recipient,
 		ScheduledAt:         scheduledAt,
 		Status:              entity.StatusWaiting,
 	}
@@ -473,9 +480,6 @@ func (s *NotifyService) GetWorkerHandler() rabbitmq.MessageHandler {
 }
 
 func (s *NotifyService) validateCreateRequest(req CreateNotificationRequest) error {
-	if req.UserID == uuid.Nil {
-		return fmt.Errorf("user_id is required: %w", entity.ErrInvalidData)
-	}
 	if req.Channel == "" {
 		return fmt.Errorf("channel is required: %w", entity.ErrInvalidData)
 	}
@@ -488,12 +492,34 @@ func (s *NotifyService) validateCreateRequest(req CreateNotificationRequest) err
 	if req.ScheduledAt.IsZero() {
 		return fmt.Errorf("scheduled_at is required: %w", entity.ErrInvalidData)
 	}
-	if req.Channel == entity.Email {
+	if req.Recipient == "" {
+		return fmt.Errorf("recipient is required: %w", entity.ErrInvalidData)
+	}
+
+	switch req.Channel {
+	case entity.Email:
+		if !isValidEmail(req.Recipient) {
+			return fmt.Errorf("invalid email format: %w", entity.ErrInvalidData)
+		}
 		if len(req.Payload) > _maxPayloadSize {
 			return fmt.Errorf("email payload too large (max 100KB): %w", entity.ErrInvalidData)
 		}
+	case entity.Telegram:
+		if !isValidTelegramID(req.Recipient) {
+			return fmt.Errorf("invalid telegram ID format: %w", entity.ErrInvalidData)
+		}
 	}
+
 	return nil
+}
+
+func isValidEmail(email string) bool {
+	return strings.Contains(email, "@") && strings.Contains(email, ".")
+}
+
+func isValidTelegramID(id string) bool {
+	_, err := strconv.ParseInt(id, 10, 64)
+	return err == nil || strings.HasPrefix(id, "@")
 }
 
 func (s *NotifyService) publishToQueue(
@@ -522,39 +548,6 @@ func (s *NotifyService) publishToQueue(
 	)
 
 	return nil
-}
-
-func (s *NotifyService) getRecipientIdentifier(
-	ctx context.Context,
-	userID uuid.UUID,
-	channel entity.Channel,
-) (string, error) {
-	var recipientIdentifier string
-	switch channel {
-	case entity.Telegram:
-		chatID, err := s.userRepo.GetTelegramChatID(ctx, nil, userID)
-		if err != nil {
-			if errors.Is(err, entity.ErrDataNotFound) {
-				return "", fmt.Errorf("telegram chat_id not found for user: %w", entity.ErrRecipientNotFound)
-			}
-			return "", fmt.Errorf("get telegram chat_id: %w", err)
-		}
-		recipientIdentifier = strconv.FormatInt(chatID, 10)
-
-	case entity.Email:
-		email, err := s.userRepo.GetEmail(ctx, nil, userID)
-		if err != nil {
-			if errors.Is(err, entity.ErrDataNotFound) {
-				return "", fmt.Errorf("email not found for user: %w", entity.ErrRecipientNotFound)
-			}
-			return "", fmt.Errorf("get email: %w", err)
-		}
-		recipientIdentifier = email
-
-	default:
-		return "", fmt.Errorf("unknown channel %s: %w", channel, entity.ErrInvalidData)
-	}
-	return recipientIdentifier, nil
 }
 
 func (s *NotifyService) sendNotification(ctx context.Context, notification entity.Notification) error {
@@ -615,7 +608,7 @@ func (s *NotifyService) scheduleRetry(
 	id uuid.UUID,
 	retryCount int,
 ) error {
-	nextAttempt := s.calculateNextAttempt(retryCount)
+	nextAttempt := s.CalculateNextAttempt(retryCount)
 
 	if err := s.notifyRepo.RescheduleNotification(ctx, tx, id, nextAttempt); err != nil {
 		return fmt.Errorf("reschedule notification: %w", err)
@@ -630,16 +623,12 @@ func (s *NotifyService) scheduleRetry(
 	return nil
 }
 
-func (s *NotifyService) calculateNextAttempt(retryCount int) time.Time {
+func (s *NotifyService) CalculateNextAttempt(retryCount int) time.Time {
 	if retryCount < 0 {
 		retryCount = 0
 	}
-
-	// multiplier = 2 ^ retryCount (но не более 2^6)
 	multiplier := 1 << min(retryCount, _maxRetryExponent)
 
-	// delay = base_delay * multiplier
-	// Но результат не может превысить _defaultRetryDelay (5 минут)
 	delay := min(s.retryDelay*time.Duration(multiplier), _defaultRetryDelay)
 
 	return time.Now().UTC().Add(delay)

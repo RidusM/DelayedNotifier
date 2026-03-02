@@ -8,20 +8,22 @@ import (
 
 // swagger:model CreateNotificationRequest
 type CreateNotificationRequest struct {
-	UserID      string    `json:"user_id"      example:"550e8400-e29b-41d4-a716-446655440000"`
-	Channel     string    `json:"channel"      example:"email"`
-	Payload     string    `json:"payload"      example:"Your order #123 is ready!"`
-	ScheduledAt time.Time `json:"scheduled_at" example:"2023-10-27T10:00:00Z"`
+	UserID      string    `json:"user_id,omitempty" example:"550e8400-e29b-41d4-a716-446655440000"`
+	Channel     string    `json:"channel"           example:"email"`
+	Recipient   string    `json:"recipient"         example:"user@example.com"`
+	Payload     string    `json:"payload"           example:"Your order #123 is ready!"`
+	ScheduledAt time.Time `json:"scheduled_at"      example:"2023-10-27T10:00:00Z"`
 }
 
 // swagger:model CreateNotificationResponse
 type CreateNotificationResponse struct {
-	ID          string    `json:"id"           example:"550e8400-e29b-41d4-a716-446655440001"`
-	UserID      string    `json:"user_id"      example:"550e8400-e29b-41d4-a716-446655440000"`
-	Channel     string    `json:"channel"      example:"email"`
-	Payload     string    `json:"payload"      example:"Your order #123 is ready!"`
-	ScheduledAt time.Time `json:"scheduled_at" example:"2023-10-27T10:00:00Z"`
-	Message     string    `json:"message"      example:"Notification created successfully"`
+	ID          string    `json:"id"                example:"550e8400-e29b-41d4-a716-446655440001"`
+	UserID      string    `json:"user_id,omitempty" example:"550e8400-e29b-41d4-a716-446655440000"`
+	Channel     string    `json:"channel"           example:"email"`
+	Recipient   string    `json:"recipient"         example:"user@example.com"`
+	Payload     string    `json:"payload"           example:"Your order #123 is ready!"`
+	ScheduledAt time.Time `json:"scheduled_at"      example:"2023-10-27T10:00:00Z"`
+	Message     string    `json:"message"           example:"Notification created successfully"`
 }
 
 // swagger:model NotificationStatusResponse

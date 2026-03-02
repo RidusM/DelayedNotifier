@@ -8,6 +8,9 @@ definitions:
       payload:
         example: 'Your order #123 is ready!'
         type: string
+      recipient:
+        example: user@example.com
+        type: string
       scheduled_at:
         example: "2023-10-27T10:00:00Z"
         type: string
@@ -28,6 +31,9 @@ definitions:
         type: string
       payload:
         example: 'Your order #123 is ready!'
+        type: string
+      recipient:
+        example: user@example.com
         type: string
       scheduled_at:
         example: "2023-10-27T10:00:00Z"

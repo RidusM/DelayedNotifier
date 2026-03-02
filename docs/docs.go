@@ -186,6 +186,10 @@ const docTemplate = `{
                     "type": "string",
                     "example": "Your order #123 is ready!"
                 },
+                "recipient": {
+                    "type": "string",
+                    "example": "user@example.com"
+                },
                 "scheduled_at": {
                     "type": "string",
                     "example": "2023-10-27T10:00:00Z"
@@ -214,6 +218,10 @@ const docTemplate = `{
                 "payload": {
                     "type": "string",
                     "example": "Your order #123 is ready!"
+                },
+                "recipient": {
+                    "type": "string",
+                    "example": "user@example.com"
                 },
                 "scheduled_at": {
                     "type": "string",

@@ -12,34 +12,50 @@ import (
 
 func (s *IntegrationTestSuite) TestCreateAndGetNotification() {
 	ctx := context.Background()
+
 	userID := uuid.New()
+	_, err := s.db.Pool.Exec(ctx, `
+        INSERT INTO user_email_links (user_id, email, verified)
+        VALUES ($1, $2, true)
+        ON CONFLICT (user_id) DO UPDATE SET email = EXCLUDED.email`,
+		userID, "test.user@example.com")
+	s.Require().NoError(err)
 
 	req := service.CreateNotificationRequest{
 		UserID:      userID,
 		Channel:     entity.Email,
 		Payload:     `{"subject":"Test","body":"<p>Hello!</p>"}`,
+		Recipient:   "test.user@example.com",
 		ScheduledAt: time.Now().Add(1 * time.Hour).UTC(),
 	}
 
 	notificationID, err := s.notifySvc.Create(ctx, req)
 	s.Require().NoError(err)
-	s.NotEqual(s.T(), uuid.Nil, notificationID)
+	s.NotEqual(uuid.Nil, notificationID)
 
 	notification, err := s.notifySvc.GetStatus(ctx, notificationID)
 	s.Require().NoError(err)
-	s.Equal(s.T(), userID, notification.UserID)
-	s.Equal(s.T(), entity.Email, notification.Channel)
-	s.Equal(s.T(), "waiting", string(notification.Status))
+	s.Equal(userID, notification.UserID)
+	s.Equal(entity.Email, notification.Channel)
+	s.Equal("waiting", string(notification.Status))
 }
 
 func (s *IntegrationTestSuite) TestCancelNotification() {
 	ctx := context.Background()
+
 	userID := uuid.New()
+	_, err := s.db.Pool.Exec(ctx, `
+        INSERT INTO user_telegram_links (user_id, telegram_chat_id, telegram_username)
+        VALUES ($1, $2, $3)
+        ON CONFLICT (user_id) DO UPDATE SET telegram_chat_id = EXCLUDED.telegram_chat_id`,
+		userID, 123456789, "@test_user")
+	s.Require().NoError(err)
 
 	req := service.CreateNotificationRequest{
 		UserID:      userID,
 		Channel:     entity.Telegram,
 		Payload:     "Test message",
+		Recipient:   "123456789",
 		ScheduledAt: time.Now().Add(1 * time.Hour).UTC(),
 	}
 
@@ -51,25 +67,27 @@ func (s *IntegrationTestSuite) TestCancelNotification() {
 
 	notification, err := s.notifySvc.GetStatus(ctx, notificationID)
 	s.Require().NoError(err)
-	s.Equal(s.T(), "cancelled", string(notification.Status))
+	s.Equal("cancelled", string(notification.Status))
 }
 
 func (s *IntegrationTestSuite) TestProcessQueueMarksAsInProcess() {
 	ctx := context.Background()
-	userID := uuid.New()
 
+	userID := uuid.New()
 	_, err := s.db.Pool.Exec(ctx, `
-		INSERT INTO user_email_links (user_id, email, verified)
-		VALUES ($1, $2, true)
-		ON CONFLICT (user_id) DO NOTHING`,
-		userID, "test@example.com")
+        INSERT INTO user_email_links (user_id, email, verified)
+        VALUES ($1, $2, true)
+        ON CONFLICT (user_id) DO UPDATE SET email = EXCLUDED.email`,
+		userID, "test.queue@example.com")
 	s.Require().NoError(err)
 
+	// Добавлено: Recipient
 	req := service.CreateNotificationRequest{
 		UserID:      userID,
 		Channel:     entity.Email,
 		Payload:     `{"subject":"Test","body":"Hello"}`,
-		ScheduledAt: time.Now().Add(-1 * time.Minute).UTC(),
+		Recipient:   "test.queue@example.com",
+		ScheduledAt: time.Now().Add(1 * time.Minute).UTC(),
 	}
 
 	notificationID, err := s.notifySvc.Create(ctx, req)
@@ -77,10 +95,10 @@ func (s *IntegrationTestSuite) TestProcessQueueMarksAsInProcess() {
 
 	stats, err := s.notifySvc.ProcessQueue(ctx)
 	s.Require().NoError(err)
-	s.Equal(s.T(), 1, stats.Processed)
-	s.Equal(s.T(), 0, stats.Failed)
+	s.Equal(1, stats.Processed)
+	s.Equal(0, stats.Failed)
 
 	notification, err := s.notifySvc.GetStatus(ctx, notificationID)
 	s.Require().NoError(err)
-	s.Equal(s.T(), "in_process", string(notification.Status))
+	s.Equal("in_process", string(notification.Status))
 }
