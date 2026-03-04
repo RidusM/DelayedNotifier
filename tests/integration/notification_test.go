@@ -81,17 +81,18 @@ func (s *IntegrationTestSuite) TestProcessQueueMarksAsInProcess() {
 		userID, "test.queue@example.com")
 	s.Require().NoError(err)
 
-	// Добавлено: Recipient
 	req := service.CreateNotificationRequest{
 		UserID:      userID,
 		Channel:     entity.Email,
 		Payload:     `{"subject":"Test","body":"Hello"}`,
 		Recipient:   "test.queue@example.com",
-		ScheduledAt: time.Now().Add(1 * time.Minute).UTC(),
+		ScheduledAt: time.Now().Add(100 * time.Millisecond).UTC(),
 	}
 
 	notificationID, err := s.notifySvc.Create(ctx, req)
 	s.Require().NoError(err)
+
+	time.Sleep(200 * time.Millisecond)
 
 	stats, err := s.notifySvc.ProcessQueue(ctx)
 	s.Require().NoError(err)

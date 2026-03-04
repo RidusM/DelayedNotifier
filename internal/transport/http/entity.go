@@ -3,6 +3,7 @@
 package httpt
 
 import (
+	"database/sql"
 	"time"
 )
 
@@ -36,7 +37,7 @@ type NotificationStatusResponse struct {
 	ScheduledAt time.Time  `json:"scheduled_at"         example:"2023-10-27T10:00:00Z"`
 	SentAt      *time.Time `json:"sent_at,omitempty"    example:"2023-10-27T10:00:05Z"`
 	RetryCount  int        `json:"retry_count"          example:"1"`
-	LastError   string     `json:"last_error,omitempty" example:"connection timeout"`
+	LastError   *string    `json:"last_error,omitempty" example:"connection timeout"`
 	CreatedAt   time.Time  `json:"created_at"           example:"2023-10-26T10:00:00Z"`
 }
 
@@ -50,4 +51,11 @@ type ErrorResponse struct {
 // swagger:model SuccessResponse
 type SuccessResponse struct {
 	Message string `json:"message" example:"Notification cancelled successfully"`
+}
+
+func nullableString(ns sql.NullString) *string {
+	if ns.Valid {
+		return &ns.String
+	}
+	return nil
 }

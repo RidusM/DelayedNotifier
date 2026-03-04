@@ -16,7 +16,7 @@ services:
     networks:
       - integration-test-network
     environment:
-      CONFIG_PATH: /app/configs/dev.env
+      CONFIG_PATH: /app/configs/integration-test.env
       INTEGRATION_TEST: "true"
     volumes:
       - ../../configs:/app/configs

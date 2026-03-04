@@ -221,6 +221,7 @@ func (s *NotifyService) Create(ctx context.Context, req CreateNotificationReques
 	}
 
 	notification := entity.Notification{
+		ID:                  req.ID,
 		UserID:              req.UserID,
 		Channel:             req.Channel,
 		Payload:             req.Payload,

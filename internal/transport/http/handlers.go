@@ -164,7 +164,7 @@ func (h *NotifyHandler) GetStatus(c *gin.Context) {
 		ScheduledAt: notification.ScheduledAt,
 		SentAt:      notification.SentAt,
 		RetryCount:  notification.RetryCount,
-		LastError:   notification.LastError,
+		LastError:   nullableString(notification.LastError),
 		CreatedAt:   notification.CreatedAt,
 	}
 

@@ -183,16 +183,16 @@ func (r *NotifyRepository) UpdateStatus(
 		update = update.Set("last_error", nil)
 	}
 
+	// nolint: exhaustive
 	switch status {
-	case entity.StatusWaiting, entity.StatusInProcess:
-		return errors.New("cannot transition from non-terminal status")
 	case entity.StatusSent:
 		update = update.Set("sent_at", time.Now().UTC())
 	case entity.StatusFailed:
-		update = update.
-			Set("retry_count", squirrel.Expr("retry_count + 1"))
+		update = update.Set("retry_count", squirrel.Expr("retry_count + 1"))
 	case entity.StatusCancelled:
 		update = update.Set("sent_at", nil)
+	case entity.StatusInProcess:
+		break
 	default:
 		return fmt.Errorf("%s: unknown status: %v", op, status)
 	}
