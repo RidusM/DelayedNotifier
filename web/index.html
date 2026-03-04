@@ -1,0 +1,938 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DelayedNotifier - Сервис отложенных уведомлений</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        header {
+            text-align: center;
+            color: white;
+            margin-bottom: 40px;
+        }
+
+        header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+        }
+
+        header p {
+            font-size: 1.1rem;
+            opacity: 0.9;
+        }
+
+        .content {
+            display: grid;
+            grid-template-columns: 400px 1fr;
+            gap: 20px;
+        }
+
+        .card {
+            background: white;
+            border-radius: 16px;
+            padding: 24px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+
+        .card h2 {
+            color: #667eea;
+            margin-bottom: 20px;
+            font-size: 1.5rem;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .form-group {
+            margin-bottom: 16px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 6px;
+            color: #4a5568;
+            font-weight: 500;
+            font-size: 14px;
+        }
+
+        .form-group label .required {
+            color: #e53e3e;
+        }
+
+        .form-group input,
+        .form-group select,
+        .form-group textarea {
+            width: 100%;
+            padding: 10px 12px;
+            border: 2px solid #e2e8f0;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: all 0.3s;
+            font-family: inherit;
+        }
+
+        .form-group input:focus,
+        .form-group select:focus,
+        .form-group textarea:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .form-group textarea {
+            resize: vertical;
+            min-height: 80px;
+        }
+
+        .form-group small {
+            display: block;
+            margin-top: 4px;
+            color: #718096;
+            font-size: 12px;
+        }
+
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            width: 100%;
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-small {
+            padding: 6px 12px;
+            font-size: 13px;
+        }
+
+        .btn-danger {
+            background: #f56565;
+            color: white;
+        }
+
+        .btn-danger:hover:not(:disabled) {
+            background: #e53e3e;
+        }
+
+        .btn-secondary {
+            background: #718096;
+            color: white;
+        }
+
+        .btn-secondary:hover:not(:disabled) {
+            background: #4a5568;
+        }
+
+        .notifications-list {
+            max-height: 700px;
+            overflow-y: auto;
+        }
+
+        .notification-item {
+            background: #f7fafc;
+            border-left: 4px solid #667eea;
+            padding: 16px;
+            margin-bottom: 12px;
+            border-radius: 8px;
+            transition: all 0.3s;
+        }
+
+        .notification-item:hover {
+            background: #edf2f7;
+            transform: translateX(4px);
+        }
+
+        .notification-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .notification-id {
+            font-family: 'Courier New', monospace;
+            font-size: 11px;
+            color: #718096;
+        }
+
+        .status-badge {
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .status-waiting {
+            background: #fef5e7;
+            color: #d68910;
+        }
+
+        .status-in_process {
+            background: #e3f2fd;
+            color: #1976d2;
+        }
+
+        .status-sent {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .status-failed {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .status-cancelled {
+            background: #e2e8f0;
+            color: #4a5568;
+        }
+
+        .notification-body {
+            margin: 10px 0;
+        }
+
+        .notification-recipient {
+            font-size: 13px;
+            color: #4a5568;
+            margin-bottom: 6px;
+        }
+
+        .notification-payload {
+            font-size: 14px;
+            font-weight: 500;
+            color: #2d3748;
+        }
+
+        .notification-meta {
+            display: flex;
+            gap: 16px;
+            font-size: 12px;
+            color: #718096;
+            margin-top: 10px;
+            flex-wrap: wrap;
+        }
+
+        .notification-meta span {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .notification-actions {
+            margin-top: 10px;
+            display: flex;
+            gap: 8px;
+        }
+
+        .channel-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 3px 10px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+            background: #667eea;
+            color: white;
+        }
+
+        .alert {
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin-bottom: 16px;
+            display: none;
+            animation: slideIn 0.3s ease-out;
+        }
+
+        .alert-success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .alert-error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .alert.show {
+            display: block;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #a0aec0;
+        }
+
+        .empty-state svg {
+            width: 80px;
+            height: 80px;
+            margin-bottom: 16px;
+            opacity: 0.5;
+        }
+
+        .loading {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid #f3f3f3;
+            border-top: 2px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+
+        .stat-card {
+            background: #f7fafc;
+            padding: 16px;
+            border-radius: 8px;
+            text-align: center;
+            border: 2px solid #e2e8f0;
+        }
+
+        .stat-value {
+            font-size: 28px;
+            font-weight: 700;
+            color: #667eea;
+        }
+
+        .stat-label {
+            font-size: 12px;
+            color: #718096;
+            margin-top: 4px;
+            font-weight: 500;
+        }
+
+        .filter-buttons {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 16px;
+            flex-wrap: wrap;
+        }
+
+        .filter-btn {
+            padding: 6px 12px;
+            border: 2px solid #e2e8f0;
+            background: white;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .filter-btn.active {
+            border-color: #667eea;
+            background: #667eea;
+            color: white;
+        }
+
+        .filter-btn:hover {
+            border-color: #667eea;
+        }
+
+        .timezone-badge {
+            display: inline-block;
+            background: rgba(255, 255, 255, 0.2);
+            padding: 4px 12px;
+            border-radius: 6px;
+            font-size: 13px;
+            margin-top: 8px;
+        }
+
+        @media (max-width: 1024px) {
+            .content {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .scrollbar::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .scrollbar::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 10px;
+        }
+
+        .scrollbar::-webkit-scrollbar-thumb {
+            background: #667eea;
+            border-radius: 10px;
+        }
+
+        .scrollbar::-webkit-scrollbar-thumb:hover {
+            background: #764ba2;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>📬 DelayedNotifier</h1>
+            <p>Сервис отложенных уведомлений с поддержкой Email и Telegram</p>
+            <span class="timezone-badge">🕐 Время: Москва (MSK, UTC+3)</span>
+        </header>
+
+        <div class="content">
+            <!-- Форма создания -->
+            <div class="card">
+                <h2>
+                    <span>✏️</span>
+                    Создать уведомление
+                </h2>
+                
+                <div id="alert" class="alert"></div>
+
+                <form id="notificationForm">
+                    <div class="form-group">
+                        <label for="channel">
+                            Канал отправки <span class="required">*</span>
+                        </label>
+                        <select id="channel" required>
+                            <option value="">Выберите канал</option>
+                            <option value="email">📧 Email</option>
+                            <option value="telegram">💬 Telegram</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="recipient">
+                            Получатель <span class="required">*</span>
+                        </label>
+                        <input 
+                            type="text" 
+                            id="recipient" 
+                            placeholder="user@example.com или @username"
+                            required
+                        >
+                        <small id="recipientHint">Введите email или Telegram username</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="userID">
+                            User ID (опционально)
+                        </label>
+                        <input 
+                            type="text" 
+                            id="userID" 
+                            placeholder="550e8400-e29b-41d4-a716-446655440000"
+                        >
+                        <small>UUID пользователя (можно оставить пустым)</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="payload">
+                            Сообщение <span class="required">*</span>
+                        </label>
+                        <textarea 
+                            id="payload" 
+                            placeholder="Введите текст уведомления..." 
+                            required
+                        ></textarea>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="scheduledAt">
+                            Время отправки (МСК) <span class="required">*</span>
+                        </label>
+                        <input type="datetime-local" id="scheduledAt" required>
+                        <small id="timeHint">Уведомление будет отправлено в указанное время</small>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary" id="submitBtn">
+                        <span id="submitText">Создать уведомление</span>
+                        <span id="submitLoading" class="loading" style="display:none;"></span>
+                    </button>
+                </form>
+            </div>
+
+            <!-- Список уведомлений -->
+            <div class="card">
+                <h2>
+                    <span>📋</span>
+                    Список уведомлений
+                </h2>
+                
+                <div class="stats" id="stats">
+                    <div class="stat-card">
+                        <div class="stat-value" id="totalCount">0</div>
+                        <div class="stat-label">Всего</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="waitingCount">0</div>
+                        <div class="stat-label">Ожидают</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="sentCount">0</div>
+                        <div class="stat-label">Отправлено</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="failedCount">0</div>
+                        <div class="stat-label">Ошибки</div>
+                    </div>
+                </div>
+
+                <div class="filter-buttons" id="filterButtons">
+                    <button class="filter-btn active" data-filter="all">Все</button>
+                    <button class="filter-btn" data-filter="waiting">Ожидают</button>
+                    <button class="filter-btn" data-filter="sent">Отправлено</button>
+                    <button class="filter-btn" data-filter="failed">Ошибки</button>
+                </div>
+
+                <div id="notificationsList" class="notifications-list scrollbar">
+                    <div class="empty-state">
+                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"></path>
+                        </svg>
+                        <p>Уведомлений пока нет</p>
+                        <p style="font-size: 12px; margin-top: 8px;">Создайте первое уведомление!</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = window.location.origin;
+        let notifications = [];
+        let currentFilter = 'all';
+
+        // Работа с московским временем (MSK = UTC+3)
+        const MSK_OFFSET = 3 * 60; // 3 часа в минутах
+
+        function getMoscowTime() {
+            const now = new Date();
+            const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
+            return new Date(utc + (MSK_OFFSET * 60000));
+        }
+
+        function dateToMoscowString(date) {
+            const mskDate = new Date(date);
+            // Преобразуем в строку для datetime-local input (формат: YYYY-MM-DDTHH:MM)
+            const year = mskDate.getFullYear();
+            const month = String(mskDate.getMonth() + 1).padStart(2, '0');
+            const day = String(mskDate.getDate()).padStart(2, '0');
+            const hours = String(mskDate.getHours()).padStart(2, '0');
+            const minutes = String(mskDate.getMinutes()).padStart(2, '0');
+            return `${year}-${month}-${day}T${hours}:${minutes}`;
+        }
+
+        // Установка времени по МСК
+        function setMinDateTime() {
+            const mskNow = getMoscowTime();
+            mskNow.setMinutes(mskNow.getMinutes() + 1);
+            
+            const input = document.getElementById('scheduledAt');
+            input.min = dateToMoscowString(mskNow);
+            input.value = dateToMoscowString(mskNow);
+            
+            updateTimeHint();
+        }
+
+        // Обновление подсказки времени
+        function updateTimeHint() {
+            const input = document.getElementById('scheduledAt');
+            const scheduledTime = new Date(input.value);
+            const mskNow = getMoscowTime();
+            const diff = scheduledTime - mskNow;
+            
+            if (diff > 0) {
+                const minutes = Math.floor(diff / 60000);
+                const hours = Math.floor(minutes / 60);
+                const mins = minutes % 60;
+                
+                let timeText = 'через ';
+                if (hours > 0) {
+                    timeText += `${hours} ч ${mins} мин`;
+                } else {
+                    timeText += `${mins} мин`;
+                }
+                
+                document.getElementById('timeHint').textContent = 
+                    `Уведомление будет отправлено ${timeText} (время МСК)`;
+            } else {
+                document.getElementById('timeHint').textContent = 
+                    '⚠️ Время должно быть в будущем!';
+            }
+        }
+
+        // Обновление подсказки для recipient
+        document.getElementById('channel').addEventListener('change', (e) => {
+            const hint = document.getElementById('recipientHint');
+            const recipientInput = document.getElementById('recipient');
+            
+            if (e.target.value === 'email') {
+                hint.textContent = 'Введите email адрес (например: user@example.com)';
+                recipientInput.placeholder = 'user@example.com';
+                recipientInput.type = 'email';
+            } else if (e.target.value === 'telegram') {
+                hint.textContent = 'Введите Telegram username (например: @username)';
+                recipientInput.placeholder = '@username';
+                recipientInput.type = 'text';
+            } else {
+                hint.textContent = 'Выберите канал';
+                recipientInput.placeholder = '';
+            }
+        });
+
+        // Обновление подсказки времени при изменении
+        document.getElementById('scheduledAt').addEventListener('change', updateTimeHint);
+
+        // Alert
+        function showAlert(message, type = 'success') {
+            const alert = document.getElementById('alert');
+            alert.className = `alert alert-${type} show`;
+            alert.textContent = message;
+            setTimeout(() => alert.classList.remove('show'), 5000);
+        }
+
+        // Форматирование даты по МСК
+        function formatDate(date) {
+            return new Date(date).toLocaleString('ru-RU', {
+                timeZone: 'Europe/Moscow',
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+        }
+
+        // Emoji для канала
+        function getChannelEmoji(channel) {
+            const emojis = {
+                'email': '📧',
+                'telegram': '💬'
+            };
+            return emojis[channel.toLowerCase()] || '📬';
+        }
+
+        // Создание уведомления
+        document.getElementById('notificationForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const submitBtn = document.getElementById('submitBtn');
+            const submitText = document.getElementById('submitText');
+            const submitLoading = document.getElementById('submitLoading');
+            
+            submitBtn.disabled = true;
+            submitText.style.display = 'none';
+            submitLoading.style.display = 'inline-block';
+
+            const userID = document.getElementById('userID').value.trim();
+            const data = {
+                channel: document.getElementById('channel').value,
+                recipient: document.getElementById('recipient').value,
+                payload: document.getElementById('payload').value,
+                scheduled_at: new Date(document.getElementById('scheduledAt').value).toISOString()
+            };
+
+            if (userID) {
+                data.user_id = userID;
+            }
+
+            try {
+                const response = await fetch(`${API_URL}/notify`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    showAlert('✅ Уведомление успешно создано!', 'success');
+                    document.getElementById('payload').value = '';
+                    setMinDateTime();
+                    
+                    notifications.unshift({
+                        id: result.id,
+                        channel: result.channel,
+                        recipient: result.recipient,
+                        payload: result.payload,
+                        scheduled_at: result.scheduled_at,
+                        status: 'waiting',
+                        created_at: new Date().toISOString()
+                    });
+                    renderNotifications();
+                } else {
+                    showAlert(`❌ Ошибка: ${result.error || result.details || 'Не удалось создать уведомление'}`, 'error');
+                }
+            } catch (error) {
+                showAlert(`❌ Ошибка сети: ${error.message}`, 'error');
+            } finally {
+                submitBtn.disabled = false;
+                submitText.style.display = 'inline';
+                submitLoading.style.display = 'none';
+            }
+        });
+
+        // Получение статуса
+        async function getNotificationStatus(id) {
+            try {
+                const response = await fetch(`${API_URL}/notify/${id}`);
+                if (response.ok) {
+                    return await response.json();
+                }
+            } catch (error) {
+                console.error('Ошибка получения статуса:', error);
+            }
+            return null;
+        }
+
+        // Отмена уведомления
+        async function cancelNotification(id) {
+            if (!confirm('Вы уверены, что хотите отменить это уведомление?')) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_URL}/notify/${id}`, {
+                    method: 'DELETE'
+                });
+
+                if (response.ok) {
+                    showAlert('✅ Уведомление отменено', 'success');
+                    const notification = notifications.find(n => n.id === id);
+                    if (notification) {
+                        notification.status = 'cancelled';
+                    }
+                    renderNotifications();
+                } else {
+                    const result = await response.json();
+                    showAlert(`❌ ${result.error || result.details}`, 'error');
+                }
+            } catch (error) {
+                showAlert(`❌ Ошибка: ${error.message}`, 'error');
+            }
+        }
+
+        // Обновление статуса (БЕЗ alert)
+        async function refreshStatus(id) {
+            const status = await getNotificationStatus(id);
+            if (status) {
+                const index = notifications.findIndex(n => n.id === id);
+                if (index !== -1) {
+                    notifications[index] = {
+                        id: status.id,
+                        user_id: status.user_id,
+                        channel: status.channel,
+                        payload: status.payload,
+                        scheduled_at: status.scheduled_at,
+                        sent_at: status.sent_at,
+                        status: status.status,
+                        retry_count: status.retry_count,
+                        last_error: status.last_error,
+                        created_at: status.created_at
+                    };
+                    renderNotifications();
+                    // УБРАЛИ showAlert - обновление тихое
+                }
+            }
+        }
+
+        // Фильтрация
+        document.getElementById('filterButtons').addEventListener('click', (e) => {
+            if (e.target.classList.contains('filter-btn')) {
+                currentFilter = e.target.dataset.filter;
+                
+                document.querySelectorAll('.filter-btn').forEach(btn => {
+                    btn.classList.remove('active');
+                });
+                e.target.classList.add('active');
+                
+                renderNotifications();
+            }
+        });
+
+        // Рендеринг
+        function renderNotifications() {
+            const list = document.getElementById('notificationsList');
+            
+            let filtered = notifications;
+            if (currentFilter !== 'all') {
+                filtered = notifications.filter(n => 
+                    (n.status || '').toLowerCase() === currentFilter.toLowerCase()
+                );
+            }
+            
+            if (filtered.length === 0) {
+                list.innerHTML = `
+                    <div class="empty-state">
+                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"></path>
+                        </svg>
+                        <p>${currentFilter === 'all' ? 'Уведомлений пока нет' : `Нет уведомлений со статусом "${currentFilter}"`}</p>
+                    </div>
+                `;
+                updateStats();
+                return;
+            }
+
+            list.innerHTML = filtered.map(n => {
+                return `
+                    <div class="notification-item" data-id="${n.id}">
+                        <div class="notification-header">
+                            <span class="notification-id">${n.id}</span>
+                            <span class="status-badge status-${(n.status || 'waiting').toLowerCase()}">
+                                ${n.status || 'waiting'}
+                            </span>
+                        </div>
+                        <div class="notification-body">
+                            <div class="notification-recipient">
+                                ${getChannelEmoji(n.channel)} 
+                                <strong>${n.recipient || 'N/A'}</strong>
+                            </div>
+                            <div class="notification-payload">
+                                ${n.payload}
+                            </div>
+                        </div>
+                        <div class="notification-meta">
+                            <span class="channel-badge">${n.channel}</span>
+                            <span>📅 ${formatDate(n.scheduled_at)}</span>
+                            ${n.retry_count ? `<span>🔄 ${n.retry_count}</span>` : ''}
+                            ${n.sent_at ? `<span>✅ ${formatDate(n.sent_at)}</span>` : ''}
+                        </div>
+                        ${n.last_error ? `
+                            <div style="margin-top: 8px; padding: 8px; background: #fff5f5; border-radius: 4px; font-size: 12px; color: #c53030;">
+                                ⚠️ ${n.last_error}
+                            </div>
+                        ` : ''}
+                        ${(n.status || '').toLowerCase() !== 'sent' && (n.status || '').toLowerCase() !== 'cancelled' ? `
+                            <div class="notification-actions">
+                                <button class="btn btn-small btn-danger" data-action="cancel" data-id="${n.id}">
+                                    ❌ Отменить
+                                </button>
+                                <button class="btn btn-small btn-secondary" data-action="refresh" data-id="${n.id}">
+                                    🔄 Обновить
+                                </button>
+                            </div>
+                        ` : ''}
+                    </div>
+                `;
+            }).join('');
+
+            list.addEventListener('click', handleNotificationAction);
+            updateStats();
+        }
+
+        // Обработчик действий
+        function handleNotificationAction(e) {
+            const button = e.target.closest('button[data-action]');
+            if (!button) return;
+
+            const action = button.dataset.action;
+            const id = button.dataset.id;
+
+            if (action === 'cancel') {
+                cancelNotification(id);
+            } else if (action === 'refresh') {
+                refreshStatus(id);
+            }
+        }
+
+        // Статистика
+        function updateStats() {
+            document.getElementById('totalCount').textContent = notifications.length;
+            document.getElementById('waitingCount').textContent = 
+                notifications.filter(n => (n.status || '').toLowerCase() === 'waiting').length;
+            document.getElementById('sentCount').textContent = 
+                notifications.filter(n => (n.status || '').toLowerCase() === 'sent').length;
+            document.getElementById('failedCount').textContent = 
+                notifications.filter(n => (n.status || '').toLowerCase() === 'failed').length;
+        }
+
+        // Автообновление (БЕЗ alert)
+        function autoRefresh() {
+            notifications.forEach(n => {
+                const status = (n.status || '').toLowerCase();
+                if (status === 'waiting' || status === 'in_process') {
+                    refreshStatus(n.id);
+                }
+            });
+        }
+
+        // Инициализация
+        function init() {
+            setMinDateTime();
+            renderNotifications();
+            
+            // Обновляем подсказку времени каждую минуту
+            setInterval(updateTimeHint, 60000);
+            
+            // Автообновление каждые 10 секунд (ТИХОЕ)
+            setInterval(autoRefresh, 10000);
+        }
+
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', init);
+        } else {
+            init();
+        }
+    </script>
+</body>
+</html>

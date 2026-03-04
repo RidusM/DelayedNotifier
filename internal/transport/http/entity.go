@@ -9,7 +9,6 @@ import (
 
 // swagger:model CreateNotificationRequest
 type CreateNotificationRequest struct {
-	UserID      string    `json:"user_id,omitempty" example:"550e8400-e29b-41d4-a716-446655440000"`
 	Channel     string    `json:"channel"           example:"email"`
 	Recipient   string    `json:"recipient"         example:"user@example.com"`
 	Payload     string    `json:"payload"           example:"Your order #123 is ready!"`

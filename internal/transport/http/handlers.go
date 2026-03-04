@@ -44,19 +44,6 @@ func (h *NotifyHandler) CreateNotification(c *gin.Context) {
 		return
 	}
 
-	var userID uuid.UUID
-	if req.UserID != "" {
-		var err error
-		userID, err = uuid.Parse(req.UserID)
-		if err != nil {
-			log.LogAttrs(ctx, logger.ErrorLevel, "invalid user_id",
-				logger.String("user_id", req.UserID),
-			)
-			h.respondError(c, http.StatusBadRequest, "invalid_user_id", "User ID must be a valid UUID", err)
-			return
-		}
-	}
-
 	channel := entity.Channel(req.Channel)
 	if !isValidChannel(channel) {
 		log.LogAttrs(ctx, logger.ErrorLevel, "invalid channel",
@@ -85,7 +72,6 @@ func (h *NotifyHandler) CreateNotification(c *gin.Context) {
 	}
 
 	serviceReq := service.CreateNotificationRequest{
-		UserID:      userID,
 		Channel:     channel,
 		Payload:     req.Payload,
 		Recipient:   req.Recipient,
@@ -100,7 +86,6 @@ func (h *NotifyHandler) CreateNotification(c *gin.Context) {
 
 	response := CreateNotificationResponse{
 		ID:          notificationID.String(),
-		UserID:      req.UserID,
 		Channel:     req.Channel,
 		Recipient:   req.Recipient,
 		Payload:     req.Payload,
@@ -109,7 +94,6 @@ func (h *NotifyHandler) CreateNotification(c *gin.Context) {
 	}
 
 	log.LogAttrs(ctx, logger.InfoLevel, "notification created successfully",
-		logger.String("user_id", req.UserID),
 		logger.String("channel", req.Channel),
 		logger.String("recipient", req.Recipient),
 		logger.String("notification_id", notificationID.String()),

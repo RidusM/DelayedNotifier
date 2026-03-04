@@ -39,6 +39,7 @@ logs/
 
 # Configs
 configs/
+.env
 
 # Build artifacts
 bin/

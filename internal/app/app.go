@@ -96,6 +96,11 @@ func Run(ctx context.Context, cfg *config.Config, log logger.Logger) error {
 	}
 	log.Info("HTTP server initialized")
 
+	eg.Go(func() error {
+		initQueueProcessor(ctx, log, svc)
+		return nil
+	})
+
 	log.Info("application started",
 		logger.String("env", cfg.Env),
 		logger.String("version", cfg.App.Version),
@@ -202,6 +207,34 @@ func initPublisher(cfg *config.Publisher) (*rabbitmq.Publisher, error) {
 
 	publisher := rabbitmq.NewPublisher(client, cfg.Exchange, cfg.ContentType)
 	return publisher, nil
+}
+
+func initQueueProcessor(
+	ctx context.Context,
+	log logger.Logger,
+	service *service.NotifyService,
+) {
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			stats, err := service.ProcessQueue(ctx)
+			if err != nil {
+				log.Error("ProcessQueue failed", "error", err)
+				continue
+			}
+			if stats.Processed > 0 {
+				log.Info("Queue processed",
+					"processed", stats.Processed,
+					"failed", stats.Failed,
+					"duration", stats.Duration)
+			}
+		case <-ctx.Done():
+			return
+		}
+	}
 }
 
 func initNotifyService(

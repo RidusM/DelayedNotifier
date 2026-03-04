@@ -228,6 +228,7 @@ func (s *NotifyService) Create(ctx context.Context, req CreateNotificationReques
 		RecipientIdentifier: req.Recipient,
 		ScheduledAt:         scheduledAt,
 		Status:              entity.StatusWaiting,
+		CreatedAt:           time.Now().UTC(),
 	}
 	err = s.tm.ExecuteInTransaction(ctx, "create_notification", func(tx pgxdriver.QueryExecuter) error {
 		txErr := s.notifyRepo.Create(ctx, tx, notification)
