@@ -9,10 +9,10 @@ import (
 
 // swagger:model CreateNotificationRequest
 type CreateNotificationRequest struct {
-	Channel     string    `json:"channel"           example:"email"`
-	Recipient   string    `json:"recipient"         example:"user@example.com"`
-	Payload     string    `json:"payload"           example:"Your order #123 is ready!"`
-	ScheduledAt time.Time `json:"scheduled_at"      example:"2023-10-27T10:00:00Z"`
+	Channel     string    `json:"channel"      example:"email"`
+	Recipient   string    `json:"recipient"    example:"user@example.com"`
+	Payload     string    `json:"payload"      example:"Your order #123 is ready!"`
+	ScheduledAt time.Time `json:"scheduled_at" example:"2023-10-27T10:00:00Z"`
 }
 
 // swagger:model CreateNotificationResponse

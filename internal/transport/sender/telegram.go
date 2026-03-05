@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"delayednotifier/internal/entity"
@@ -53,23 +54,26 @@ func (s *TelegramSender) Send(ctx context.Context, n entity.Notification) error 
 		return fmt.Errorf("%s: context error: %w", op, err)
 	}
 
-	chatID, err := strconv.ParseInt(n.RecipientIdentifier, 10, 64)
+	recipient := n.RecipientIdentifier
+
+	if strings.HasPrefix(recipient, "@") {
+		return s.sendMessageByUsername(ctx, op, recipient, n)
+	} else {
+		return s.sendMessageByChatID(ctx, op, recipient, n)
+	}
+}
+
+func (s *TelegramSender) sendMessageByChatID(ctx context.Context, op, chatIDStr string, n entity.Notification) error {
+	chatID, err := strconv.ParseInt(chatIDStr, 10, 64)
 	if err != nil {
-		return fmt.Errorf("%s: invalid chat_id %q: %w", op, n.RecipientIdentifier, err)
+		return fmt.Errorf("%s: invalid chat_id %q: %w", op, chatIDStr, err)
 	}
 
-	textToSend := n.Payload
-	var payload struct {
-		Body string `json:"body"`
-	}
-	if unmarshErr := json.Unmarshal([]byte(n.Payload), &payload); unmarshErr == nil && payload.Body != "" {
-		textToSend = payload.Body
-	}
-
+	textToSend := s.extractTextFromPayload(n.Payload)
 	msg := tgbotapi.NewMessage(chatID, textToSend)
 	msg.ParseMode = "Markdown"
 
-	s.log.LogAttrs(ctx, logger.DebugLevel, "sending telegram message",
+	s.log.LogAttrs(ctx, logger.DebugLevel, "sending telegram message by chat_id",
 		logger.Int64("chat_id", chatID),
 		logger.String("notification_id", n.ID.String()),
 	)
@@ -79,10 +83,49 @@ func (s *TelegramSender) Send(ctx context.Context, n entity.Notification) error 
 		return fmt.Errorf("%s: send failed: %w", op, err)
 	}
 
-	s.log.LogAttrs(ctx, logger.InfoLevel, "telegram message sent successfully",
+	s.log.LogAttrs(ctx, logger.InfoLevel, "telegram message sent successfully by chat_id",
 		logger.String("notification_id", n.ID.String()),
 		logger.Int64("chat_id", chatID),
 	)
 
 	return nil
+}
+
+func (s *TelegramSender) sendMessageByUsername(ctx context.Context, op, username string, n entity.Notification) error {
+	if len(username) <= 1 {
+		return fmt.Errorf("%s: invalid username %q: too short", op, username)
+	}
+
+	textToSend := s.extractTextFromPayload(n.Payload)
+
+	msg := tgbotapi.NewMessageToChannel(username, textToSend)
+	msg.ParseMode = "Markdown"
+
+	s.log.LogAttrs(ctx, logger.DebugLevel, "sending telegram message by username",
+		logger.String("username", username),
+		logger.String("notification_id", n.ID.String()),
+	)
+
+	_, err := s.bot.Send(msg)
+	if err != nil {
+		return fmt.Errorf("%s: send to username %q failed: %w", op, username, err)
+	}
+
+	s.log.LogAttrs(ctx, logger.InfoLevel, "telegram message sent successfully by username",
+		logger.String("notification_id", n.ID.String()),
+		logger.String("username", username),
+	)
+
+	return nil
+}
+
+func (s *TelegramSender) extractTextFromPayload(payload string) string {
+	textToSend := payload
+	var payloadStruct struct {
+		Body string `json:"body"`
+	}
+	if unmarshErr := json.Unmarshal([]byte(payload), &payloadStruct); unmarshErr == nil && payloadStruct.Body != "" {
+		textToSend = payloadStruct.Body
+	}
+	return textToSend
 }

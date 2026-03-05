@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"delayednotifier/internal/config"
@@ -26,14 +27,20 @@ const (
 	_strategyAttempts = 3
 	_strategyDelay    = 3 * time.Second
 	_strategyBackoff  = 2.0
-	_cacheTTL         = 5 * time.Minute
+
+	_rabbitMQWorkers       = 2
+	_rabbitMQPrefetchCount = 10
+
+	_cacheTTL = 5 * time.Minute
+
+	_queueProcessorInterval = 5 * time.Second
 )
 
 func Run(ctx context.Context, cfg *config.Config, log logger.Logger) error {
 	var (
 		db  *pgxdriver.Postgres
 		rdb *redis.Client
-		rmq *rabbitmq.Publisher
+		rmq *rabbitmq.RabbitClient
 		tm  transaction.Manager
 		svc *service.NotifyService
 		err error
@@ -77,13 +84,19 @@ func Run(ctx context.Context, cfg *config.Config, log logger.Logger) error {
 	multiSender := initMultiSender(log, teleSender, emailSender)
 	log.Info("multi-sender initialized successfully")
 
-	rmq, err = initPublisher(&cfg.Publisher)
+	rmq, err = initRabbitMQ(&cfg.Publisher)
 	if err != nil {
-		return fmt.Errorf("init rabbitmq publisher: %w", err)
+		return fmt.Errorf("init rabbitmq client: %w", err)
 	}
-	log.Info("RabbitMQ publisher initialized successfully")
+	log.Info("RabbitMQ client initialized successfully")
 
-	svc, err = initNotifyService(&cfg.Service, db, tm, rdb, multiSender, rmq, log)
+	if declareErr := declareRabbitMQQueues(rmq, cfg.Publisher.Exchange); declareErr != nil {
+		return fmt.Errorf("declare rabbitmq queues: %w", declareErr)
+	}
+
+	publisher := rabbitmq.NewPublisher(rmq, cfg.Publisher.Exchange, cfg.Publisher.ContentType)
+
+	svc, err = initNotifyService(&cfg.Service, db, tm, rdb, multiSender, publisher, log)
 	if err != nil {
 		return fmt.Errorf("init notify service: %w", err)
 	}
@@ -101,6 +114,10 @@ func Run(ctx context.Context, cfg *config.Config, log logger.Logger) error {
 		return nil
 	})
 
+	eg.Go(func() error {
+		return startConsumers(ctx, svc, rmq, log)
+	})
+
 	log.Info("application started",
 		logger.String("env", cfg.Env),
 		logger.String("version", cfg.App.Version),
@@ -111,6 +128,10 @@ func Run(ctx context.Context, cfg *config.Config, log logger.Logger) error {
 			log.Error("application shutdown with error", logger.Any("error", egErr))
 			return fmt.Errorf("application shutdown error: %w", egErr)
 		}
+	}
+
+	if rmqErr := rmq.Close(); rmqErr != nil {
+		log.Error("Failed to close RabbitMQ client", logger.Any("error", rmqErr))
 	}
 
 	log.Info("application shutdown complete")
@@ -185,7 +206,7 @@ func initMultiSender(
 	return multi
 }
 
-func initPublisher(cfg *config.Publisher) (*rabbitmq.Publisher, error) {
+func initRabbitMQ(cfg *config.Publisher) (*rabbitmq.RabbitClient, error) {
 	strategy := retry.Strategy{
 		Attempts: _strategyAttempts,
 		Delay:    _strategyDelay,
@@ -197,6 +218,7 @@ func initPublisher(cfg *config.Publisher) (*rabbitmq.Publisher, error) {
 		ConnectTimeout: cfg.ConnectTimeout,
 		Heartbeat:      cfg.Heartbeat,
 		ProducingStrat: strategy,
+		ConsumingStrat: strategy,
 		ReconnectStrat: strategy,
 	}
 
@@ -205,8 +227,103 @@ func initPublisher(cfg *config.Publisher) (*rabbitmq.Publisher, error) {
 		return nil, fmt.Errorf("create rabbitmq client: %w", err)
 	}
 
-	publisher := rabbitmq.NewPublisher(client, cfg.Exchange, cfg.ContentType)
-	return publisher, nil
+	return client, nil
+}
+
+func startConsumers(
+	ctx context.Context,
+	svc *service.NotifyService,
+	client *rabbitmq.RabbitClient,
+	log logger.Logger,
+) error {
+	channels := []string{"telegram", "email"}
+
+	var wg sync.WaitGroup
+
+	for _, channel := range channels {
+		wg.Add(1)
+		go func(ch string) {
+			defer wg.Done()
+
+			consumerCfg := rabbitmq.ConsumerConfig{
+				Queue:         ch,
+				ConsumerTag:   fmt.Sprintf("delayed-notifier-%s", ch),
+				AutoAck:       false,
+				Workers:       _rabbitMQWorkers,
+				PrefetchCount: _rabbitMQPrefetchCount,
+				Ask: rabbitmq.AskConfig{
+					Multiple: false,
+				},
+				Nack: rabbitmq.NackConfig{
+					Multiple: false,
+					Requeue:  true,
+				},
+			}
+
+			consumer := rabbitmq.NewConsumer(client, consumerCfg, svc.GetWorkerHandler())
+
+			log.Info("Starting consumer", "channel", ch)
+
+			if err := consumer.Start(ctx); err != nil {
+				if !errors.Is(err, context.Canceled) && !errors.Is(err, rabbitmq.ErrClientClosed) {
+					log.Error("Consumer failed", "channel", ch, "error", err)
+				}
+			}
+
+			log.Info("Consumer stopped", "channel", ch)
+		}(channel)
+	}
+
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-ctx.Done():
+		return fmt.Errorf("consumer context cancelled: %w", ctx.Err())
+	case <-done:
+		return nil
+	}
+}
+
+func declareRabbitMQQueues(client *rabbitmq.RabbitClient, exchangeName string) error {
+	if err := client.DeclareExchange(
+		exchangeName,
+		"direct",
+		true,
+		false,
+		false,
+		nil,
+	); err != nil {
+		return fmt.Errorf("declare exchange %s: %w", exchangeName, err)
+	}
+	queues := []struct {
+		name       string
+		routingKey string
+		durable    bool
+		autoDelete bool
+	}{
+		{"telegram", "telegram", true, false},
+		{"email", "email", true, false},
+	}
+
+	for _, q := range queues {
+		if err := client.DeclareQueue(
+			q.name,
+			exchangeName,
+			q.routingKey,
+			q.durable,
+			q.autoDelete,
+			true,
+			nil,
+		); err != nil {
+			return fmt.Errorf("declare queue %s: %w", q.name, err)
+		}
+	}
+
+	return nil
 }
 
 func initQueueProcessor(
@@ -214,7 +331,7 @@ func initQueueProcessor(
 	log logger.Logger,
 	service *service.NotifyService,
 ) {
-	ticker := time.NewTicker(5 * time.Second)
+	ticker := time.NewTicker(_queueProcessorInterval)
 	defer ticker.Stop()
 
 	for {

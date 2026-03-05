@@ -357,10 +357,6 @@ func (s *NotifyService) ProcessQueue(ctx context.Context) (*ProcessingStats, err
 	startTime := time.Now()
 	stats := &ProcessingStats{}
 
-	log.LogAttrs(ctx, logger.InfoLevel, "queue processing started",
-		logger.Uint64("query_limit", s.queryLimit),
-	)
-
 	notifications, err := s.notifyRepo.GetForProcess(ctx, nil, s.queryLimit)
 	if err != nil {
 		return stats, fmt.Errorf("%s: get for process: %w", op, err)
@@ -520,8 +516,11 @@ func isValidEmail(email string) bool {
 }
 
 func isValidTelegramID(id string) bool {
+	if strings.HasPrefix(id, "@") {
+		return len(id) > 1
+	}
 	_, err := strconv.ParseInt(id, 10, 64)
-	return err == nil || strings.HasPrefix(id, "@")
+	return err == nil
 }
 
 func (s *NotifyService) publishToQueue(
