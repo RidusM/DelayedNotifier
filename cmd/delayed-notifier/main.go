@@ -40,14 +40,8 @@ func main() {
 		fmt.Fprintf(os.Stderr, "critical: logger init failed: %v\n", err)
 	}
 
-	log.Infow("application starting",
-		"version", cfg.App.Version,
-		"env", cfg.Env,
-		"pid", os.Getpid(),
-	)
-
 	if err = app.Run(ctx, &cfg, log); err != nil && !errors.Is(err, context.Canceled) {
-		log.Errorw("application crashed", "error", err)
+		fmt.Fprintf(os.Stderr, "critical: application crashed: %v\n", err)
 	}
 
 	log.Infow("shutdown complete")

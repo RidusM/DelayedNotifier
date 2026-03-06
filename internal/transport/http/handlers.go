@@ -11,7 +11,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/wb-go/wbf/logger"
 )
 
 // @Summary Создать уведомление
@@ -27,28 +26,15 @@ import (
 func (h *NotifyHandler) CreateNotification(c *gin.Context) {
 	const op = "transport.http.NotifyHandler.CreateNotification"
 	ctx := c.Request.Context()
-	log := h.log.Ctx(ctx).With("op", op)
-
-	log.LogAttrs(ctx, logger.InfoLevel, "create notification request received",
-		logger.String("method", c.Request.Method),
-		logger.String("path", c.Request.URL.Path),
-		logger.String("remote_addr", c.Request.RemoteAddr),
-	)
 
 	var req CreateNotificationRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		log.LogAttrs(ctx, logger.ErrorLevel, "invalid request body",
-			logger.Any("error", err),
-		)
 		h.respondError(c, http.StatusBadRequest, "invalid_request", "Invalid JSON format", err)
 		return
 	}
 
 	channel := entity.Channel(req.Channel)
 	if !isValidChannel(channel) {
-		log.LogAttrs(ctx, logger.ErrorLevel, "invalid channel",
-			logger.String("channel", req.Channel),
-		)
 		h.respondError(c, http.StatusBadRequest, "invalid_channel",
 			"Channel must be one of: telegram, email", nil)
 		return
@@ -93,12 +79,6 @@ func (h *NotifyHandler) CreateNotification(c *gin.Context) {
 		Message:     "Notification created successfully",
 	}
 
-	log.LogAttrs(ctx, logger.InfoLevel, "notification created successfully",
-		logger.String("channel", req.Channel),
-		logger.String("recipient", req.Recipient),
-		logger.String("notification_id", notificationID.String()),
-	)
-
 	c.Header("Location", fmt.Sprintf("/notify/%s", notificationID))
 	h.respondJSON(c, http.StatusCreated, response)
 }
@@ -117,21 +97,13 @@ func (h *NotifyHandler) CreateNotification(c *gin.Context) {
 func (h *NotifyHandler) GetStatus(c *gin.Context) {
 	const op = "transport.http.NotifyHandler.GetStatus"
 	ctx := c.Request.Context()
-	log := h.log.Ctx(ctx).With("op", op)
 
 	idStr := c.Param("id")
 	id, err := uuid.Parse(idStr)
 	if err != nil {
-		log.LogAttrs(ctx, logger.ErrorLevel, "invalid notification id",
-			logger.String("id", idStr),
-		)
 		h.respondError(c, http.StatusBadRequest, "invalid_id", "Invalid notification ID format", err)
 		return
 	}
-
-	log.LogAttrs(ctx, logger.InfoLevel, "get status request received",
-		logger.String("id", id.String()),
-	)
 
 	notification, err := h.svc.GetStatus(ctx, id)
 	if err != nil {
@@ -152,11 +124,6 @@ func (h *NotifyHandler) GetStatus(c *gin.Context) {
 		CreatedAt:   notification.CreatedAt,
 	}
 
-	log.LogAttrs(ctx, logger.InfoLevel, "status retrieved successfully",
-		logger.String("id", id.String()),
-		logger.String("status", notification.Status.String()),
-	)
-
 	h.respondJSON(c, http.StatusOK, response)
 }
 
@@ -175,30 +142,18 @@ func (h *NotifyHandler) GetStatus(c *gin.Context) {
 func (h *NotifyHandler) Cancel(c *gin.Context) {
 	const op = "transport.http.NotifyHandler.Cancel"
 	ctx := c.Request.Context()
-	log := h.log.Ctx(ctx).With("op", op)
 
 	idStr := c.Param("id")
 	id, err := uuid.Parse(idStr)
 	if err != nil {
-		log.LogAttrs(ctx, logger.ErrorLevel, "invalid notification id",
-			logger.String("id", idStr),
-		)
 		h.respondError(c, http.StatusBadRequest, "invalid_id", "Invalid notification ID format", err)
 		return
 	}
-
-	log.LogAttrs(ctx, logger.InfoLevel, "cancel request received",
-		logger.String("id", id.String()),
-	)
 
 	if cancelErr := h.svc.Cancel(ctx, id); cancelErr != nil {
 		h.handleServiceError(c, op, cancelErr)
 		return
 	}
-
-	log.LogAttrs(ctx, logger.InfoLevel, "notification cancelled successfully",
-		logger.String("id", id.String()),
-	)
 
 	response := SuccessResponse{
 		Message: "Notification cancelled successfully",

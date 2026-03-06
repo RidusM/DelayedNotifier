@@ -26,13 +26,12 @@ func (h *NotifyHandler) loggingMiddleware() gin.HandlerFunc {
 		method := c.Request.Method
 		path := c.Request.URL.Path
 
-		h.log.LogAttrs(c.Request.Context(), logger.InfoLevel, "HTTP request",
+		h.log.LogAttrs(c.Request.Context(), logger.InfoLevel, "HTTP request processed",
 			logger.String("method", method),
 			logger.String("path", path),
 			logger.Int("status", statusCode),
 			logger.Duration("duration", latency),
 			logger.String("client_ip", c.ClientIP()),
-			logger.String("user_agent", c.Request.UserAgent()),
 		)
 	}
 }

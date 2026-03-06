@@ -118,11 +118,6 @@ func Run(ctx context.Context, cfg *config.Config, log logger.Logger) error {
 		return startConsumers(ctx, svc, rmq, log)
 	})
 
-	log.Info("application started",
-		logger.String("env", cfg.Env),
-		logger.String("version", cfg.App.Version),
-	)
-
 	if egErr := eg.Wait(); egErr != nil {
 		if !errors.Is(egErr, context.Canceled) {
 			log.Error("application shutdown with error", logger.Any("error", egErr))
@@ -141,7 +136,7 @@ func Run(ctx context.Context, cfg *config.Config, log logger.Logger) error {
 func initDatabase(cfg *config.Database, log logger.Logger) (*pgxdriver.Postgres, error) {
 	db, err := pgxdriver.New(
 		cfg.DSN,
-		log.With(logger.String("component", "database")),
+		log,
 		pgxdriver.MaxPoolSize(cfg.PoolMax),
 		pgxdriver.MaxConnAttempts(cfg.ConnAttempts),
 		pgxdriver.BaseRetryDelay(cfg.BaseRetryDelay),
@@ -393,7 +388,7 @@ func initHTTPServer(
 	log logger.Logger,
 ) error {
 	handler := httpt.NewNotifyHandler(svc, log)
-	httpServer, err := httpt.NewHTTPServer(handler, cfg, log.With(logger.String("component", "http")))
+	httpServer, err := httpt.NewHTTPServer(handler, cfg, log)
 	if err != nil {
 		return fmt.Errorf("create http server: %w", err)
 	}

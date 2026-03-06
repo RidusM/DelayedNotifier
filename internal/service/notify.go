@@ -261,13 +261,13 @@ func (s *NotifyService) GetStatus(ctx context.Context, id uuid.UUID) (*entity.No
 		"id": id.String(),
 	})
 
-	log.LogAttrs(ctx, logger.InfoLevel, "get status requested",
+	log.LogAttrs(ctx, logger.DebugLevel, "get status requested",
 		logger.String("id", id.String()),
 	)
 
 	cacheKey := s.cache.GetCacheKey(id)
 	if cached, err := s.cache.GetFromCache(ctx, cacheKey); err == nil && cached != nil {
-		log.LogAttrs(ctx, logger.InfoLevel, "served from cache",
+		log.LogAttrs(ctx, logger.DebugLevel, "served from cache",
 			logger.String("id", id.String()),
 			logger.Duration("duration", time.Since(startTime)),
 		)
