@@ -5,6 +5,8 @@ package httpt
 import (
 	"database/sql"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 // swagger:model CreateNotificationRequest
@@ -17,7 +19,7 @@ type CreateNotificationRequest struct {
 
 // swagger:model CreateNotificationResponse
 type CreateNotificationResponse struct {
-	ID          string    `json:"id"                example:"550e8400-e29b-41d4-a716-446655440001"`
+	ID          uuid.UUID `json:"id"                example:"550e8400-e29b-41d4-a716-446655440001"`
 	UserID      string    `json:"user_id,omitempty" example:"550e8400-e29b-41d4-a716-446655440000"`
 	Channel     string    `json:"channel"           example:"email"`
 	Recipient   string    `json:"recipient"         example:"user@example.com"`

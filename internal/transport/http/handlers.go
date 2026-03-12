@@ -71,7 +71,7 @@ func (h *NotifyHandler) CreateNotification(c *gin.Context) {
 	}
 
 	response := CreateNotificationResponse{
-		ID:          notificationID.String(),
+		ID:          notificationID,
 		Channel:     req.Channel,
 		Recipient:   req.Recipient,
 		Payload:     req.Payload,
@@ -169,7 +169,7 @@ func (h *NotifyHandler) Health(c *gin.Context) {
 	h.respondJSON(c, http.StatusOK, response)
 }
 
-func (h *NotifyHandler) respondJSON(c *gin.Context, status int, data interface{}) {
+func (h *NotifyHandler) respondJSON(c *gin.Context, status int, data any) {
 	c.JSON(status, data)
 }
 

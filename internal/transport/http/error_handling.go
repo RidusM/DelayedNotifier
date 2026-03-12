@@ -35,7 +35,7 @@ func (h *NotifyHandler) handleServiceError(c *gin.Context, op string, err error)
 
 	case errors.Is(err, entity.ErrRecipientNotFound):
 		log.LogAttrs(ctx, logger.WarnLevel, "recipient not found")
-		h.respondError(c, http.StatusBadRequest, "recipient_not_found",
+		h.respondError(c, http.StatusNotFound, "recipient_not_found",
 			"Recipient identifier not found for this user", err)
 
 	case errors.Is(err, entity.ErrConflictingData):
