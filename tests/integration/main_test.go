@@ -26,7 +26,6 @@ const (
 	_strategyAttempts = 3
 	_strategyDelay    = 3 * time.Second
 	_strategyBackoff  = 2.0
-	_cacheTTL         = 5 * time.Minute
 	_maxRetryAttempts = 10
 	_ctxTimeout       = 60 * time.Second
 	_baseTimeout      = 5 * time.Second
@@ -95,8 +94,8 @@ func (s *IntegrationTestSuite) SetupSuite() {
 	s.Require().NoError(err, "Transaction manager init failed")
 
 	publisher := rabbitmq.NewPublisher(rmq, cfg.Publisher.Exchange, cfg.Publisher.ContentType)
-	cacheRepo := repository.NewCacheRepository(rdb, _cacheTTL)
-	userRepo := repository.NewUserRepository(db)
+	cacheRepo := repository.NewCacheRepository(rdb)
+	userRepo := repository.NewTelegramRepository(db)
 	notifyRepo := repository.NewNotifyRepository(db)
 	notifySender := sender.NewMultiSender()
 

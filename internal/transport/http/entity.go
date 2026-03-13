@@ -3,7 +3,6 @@
 package httpt
 
 import (
-	"database/sql"
 	"time"
 
 	"github.com/google/uuid"
@@ -19,19 +18,17 @@ type CreateNotificationRequest struct {
 
 // swagger:model CreateNotificationResponse
 type CreateNotificationResponse struct {
-	ID          uuid.UUID `json:"id"                example:"550e8400-e29b-41d4-a716-446655440001"`
-	UserID      string    `json:"user_id,omitempty" example:"550e8400-e29b-41d4-a716-446655440000"`
-	Channel     string    `json:"channel"           example:"email"`
-	Recipient   string    `json:"recipient"         example:"user@example.com"`
-	Payload     string    `json:"payload"           example:"Your order #123 is ready!"`
-	ScheduledAt time.Time `json:"scheduled_at"      example:"2023-10-27T10:00:00Z"`
-	Message     string    `json:"message"           example:"Notification created successfully"`
+	ID          uuid.UUID `json:"id"           example:"550e8400-e29b-41d4-a716-446655440001"`
+	Channel     string    `json:"channel"      example:"email"`
+	Recipient   string    `json:"recipient"    example:"user@example.com"`
+	Payload     string    `json:"payload"      example:"Your order #123 is ready!"`
+	ScheduledAt time.Time `json:"scheduled_at" example:"2023-10-27T10:00:00Z"`
+	Message     string    `json:"message"      example:"Notification created successfully"`
 }
 
 // swagger:model NotificationStatusResponse
 type NotificationStatusResponse struct {
 	ID          string     `json:"id"                   example:"550e8400-e29b-41d4-a716-446655440001"`
-	UserID      string     `json:"user_id"              example:"550e8400-e29b-41d4-a716-446655440000"`
 	Channel     string     `json:"channel"              example:"EMAIL"`
 	Status      string     `json:"status"               example:"waiting"`
 	Payload     string     `json:"payload"              example:"Your order #123 is ready!"`
@@ -52,11 +49,4 @@ type ErrorResponse struct {
 // swagger:model SuccessResponse
 type SuccessResponse struct {
 	Message string `json:"message" example:"Notification cancelled successfully"`
-}
-
-func nullableString(ns sql.NullString) *string {
-	if ns.Valid {
-		return &ns.String
-	}
-	return nil
 }

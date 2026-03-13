@@ -16,7 +16,6 @@ import (
 const (
 	_maxSubjectLength = 255
 	_maxEmailLength   = 254
-	_maxPayloadSize   = 100_000
 )
 
 type EmailSender struct {
@@ -56,9 +55,6 @@ func (s *EmailSender) Send(ctx context.Context, n entity.Notification) error {
 		payload.Subject = "Notification"
 	}
 
-	if len(payload.Body) > _maxPayloadSize {
-		return fmt.Errorf("%s: email body too large (max 100KB): %w", op, entity.ErrInvalidData)
-	}
 	if len(payload.Subject) > _maxSubjectLength {
 		return fmt.Errorf("%s: email subject too long (max 255 chars): %w", op, entity.ErrInvalidData)
 	}
@@ -80,6 +76,9 @@ func (s *EmailSender) Send(ctx context.Context, n entity.Notification) error {
 		done <- s.dialer.DialAndSend(m)
 	}()
 
+	timer := time.NewTimer(_defaultTimeout)
+	defer timer.Stop()
+
 	select {
 	case err := <-done:
 		if err != nil {
@@ -88,7 +87,7 @@ func (s *EmailSender) Send(ctx context.Context, n entity.Notification) error {
 		return nil
 	case <-ctx.Done():
 		return fmt.Errorf("%s: %w", op, ctx.Err())
-	case <-time.After(_defaultTimeout):
+	case <-timer.C:
 		return fmt.Errorf("%s: timeout after 10s", op)
 	}
 }

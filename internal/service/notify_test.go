@@ -27,7 +27,7 @@ import (
 type testEnv struct {
 	svc        *service.NotifyService
 	notifyRepo *mock_repository.MockNotifyRepository
-	userRepo   *mock_repository.MockUserRepository
+	teleRepo   *mock_repository.MockTelegramRepository
 	cacheRepo  *mock_repository.MockCacheRepository
 	sender     *mock_sender.MockNotificationSender
 	ctrl       *gomock.Controller
@@ -63,7 +63,7 @@ func setup(t *testing.T) *testEnv {
 
 	ctrl := gomock.NewController(t)
 	notifyRepo := mock_repository.NewMockNotifyRepository(ctrl)
-	userRepo := mock_repository.NewMockUserRepository(ctrl)
+	teleRepo := mock_repository.NewMockTelegramRepository(ctrl)
 	cacheRepo := mock_repository.NewMockCacheRepository(ctrl)
 	sender := mock_sender.NewMockNotificationSender(ctrl)
 
@@ -72,7 +72,7 @@ func setup(t *testing.T) *testEnv {
 
 	svc, err := service.NewNotifyService(
 		notifyRepo,
-		userRepo,
+		teleRepo,
 		cacheRepo,
 		sender,
 		&MockTM{},
@@ -86,7 +86,7 @@ func setup(t *testing.T) *testEnv {
 	return &testEnv{
 		svc:        svc,
 		notifyRepo: notifyRepo,
-		userRepo:   userRepo,
+		teleRepo:   teleRepo,
 		cacheRepo:  cacheRepo,
 		sender:     sender,
 		ctrl:       ctrl,
@@ -217,7 +217,7 @@ func TestCreate_WithoutUserID(t *testing.T) {
 
 	env.notifyRepo.EXPECT().Create(ctx, nil, gomock.Any()).DoAndReturn(
 		func(_ context.Context, _ pgxdriver.QueryExecuter, notify entity.Notification) error {
-			assert.Equal(t, uuid.Nil, notify.UserID)
+			assert.NotEqual(t, uuid.Nil, notify.ID)
 			return nil
 		}).Times(1)
 
@@ -345,7 +345,7 @@ func TestGetStatus_NotFound(t *testing.T) {
 
 	_, err := env.svc.GetStatus(ctx, id)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, service.ErrNotificationNotFound)
+	assert.ErrorIs(t, err, entity.ErrNotificationNotFound)
 }
 
 func TestCancel_Success(t *testing.T) {
@@ -374,7 +374,7 @@ func TestCancel_NotFound(t *testing.T) {
 
 	err := env.svc.Cancel(ctx, id)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, service.ErrNotificationNotFound)
+	assert.ErrorIs(t, err, entity.ErrNotificationNotFound)
 }
 
 func TestCancel_AlreadySent(t *testing.T) {
@@ -387,7 +387,7 @@ func TestCancel_AlreadySent(t *testing.T) {
 	env.notifyRepo.EXPECT().GetByID(gomock.Any(), nil, id, true).Return(notif, nil)
 
 	err := env.svc.Cancel(context.Background(), id)
-	require.ErrorIs(t, err, service.ErrNotificationAlreadySent)
+	require.ErrorIs(t, err, entity.ErrNotificationAlreadySent)
 }
 
 func TestCancel_AlreadyCancelled(t *testing.T) {
@@ -402,7 +402,7 @@ func TestCancel_AlreadyCancelled(t *testing.T) {
 
 	err := env.svc.Cancel(ctx, id)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, service.ErrNotificationCancelled)
+	assert.ErrorIs(t, err, entity.ErrNotificationCancelled)
 }
 
 func TestProcessQueue_NoNotifications(t *testing.T) {
@@ -511,7 +511,7 @@ func TestWorkerHandler_SendFailed_WithRetry(t *testing.T) {
 
 	delivery := amqp091.Delivery{Body: body}
 
-	env.notifyRepo.EXPECT().GetByID(gomock.Any(), nil, id, true).Return(&notif, nil).Times(2)
+	env.notifyRepo.EXPECT().GetByID(gomock.Any(), nil, id, true).Return(&notif, nil).Times(1)
 	env.sender.EXPECT().Send(gomock.Any(), notif).Return(sendErr)
 	env.notifyRepo.EXPECT().UpdateStatus(gomock.Any(), nil, id, entity.StatusFailed, gomock.Any()).Return(nil)
 	env.notifyRepo.EXPECT().RescheduleNotification(gomock.Any(), nil, id, gomock.Any()).Return(nil)
@@ -536,7 +536,7 @@ func TestWorkerHandler_MaxRetriesReached(t *testing.T) {
 	require.NoError(t, err)
 
 	delivery := amqp091.Delivery{Body: body}
-	env.notifyRepo.EXPECT().GetByID(ctx, nil, id, true).Return(&notif, nil).Times(2)
+	env.notifyRepo.EXPECT().GetByID(ctx, nil, id, true).Return(&notif, nil).Times(1)
 	env.sender.EXPECT().Send(ctx, notif).Return(sendErr)
 	env.notifyRepo.EXPECT().UpdateStatus(ctx, nil, id, entity.StatusFailed, gomock.Any()).Return(nil)
 	env.cacheRepo.EXPECT().InvalidateCache(ctx, id).Return(nil)
@@ -571,11 +571,11 @@ func TestCalculateNextAttempt(t *testing.T) {
 		retry int
 		delay time.Duration
 	}{
-		{0, 5 * time.Minute},
-		{1, 5 * time.Minute},
-		{2, 5 * time.Minute},
-		{10, 5 * time.Minute},
 		{-1, 5 * time.Minute},
+		{0, 5 * time.Minute},
+		{1, 10 * time.Minute},
+		{2, 20 * time.Minute},
+		{10, 5 * time.Minute * 64},
 	}
 
 	for _, tt := range tests {

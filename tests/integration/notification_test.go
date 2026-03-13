@@ -35,7 +35,6 @@ func (s *IntegrationTestSuite) TestCreateAndGetNotification() {
 
 	notification, err := s.notifySvc.GetStatus(ctx, notificationID)
 	s.Require().NoError(err)
-	s.Equal(userID, notification.UserID)
 	s.Equal(entity.Email, notification.Channel)
 	s.Equal("waiting", string(notification.Status))
 }

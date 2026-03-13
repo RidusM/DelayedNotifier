@@ -16,33 +16,42 @@ import (
 )
 
 func main() {
-	defer func() {
-		if r := recover(); r != nil {
-			log, _ := logger.NewZapAdapter("delayed-notifier", "production")
-			if log != nil {
-				log.Errorw("PANIC RECOVERED", "panic", r)
-			} else {
-				fmt.Fprintf(os.Stderr, "PANIC (no logger): %v\n", r)
-			}
-		}
-	}()
+	if err := run(); err != nil {
+		fmt.Fprintf(os.Stderr, "fatal: %v\n", err)
+		os.Exit(1)
+	}
+}
 
+func run() error {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
 	var cfg config.Config
 	if err := cleanenvport.Load(&cfg); err != nil {
-		fmt.Fprintf(os.Stderr, "critical: config load failed: %v\n", err)
+		return fmt.Errorf("config load: %w", err)
 	}
 
 	log, err := logger.NewZapAdapter(cfg.App.Name, cfg.Env)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "critical: logger init failed: %v\n", err)
+		return fmt.Errorf("logger init: %w", err)
 	}
 
-	if err = app.Run(ctx, &cfg, log); err != nil && !errors.Is(err, context.Canceled) {
-		fmt.Fprintf(os.Stderr, "critical: application crashed: %v\n", err)
+	defer func() {
+		if r := recover(); r != nil {
+			log.Error("PANIC RECOVERED", "panic", r)
+		}
+	}()
+
+	log.Info("starting application...")
+
+	if appErr := app.Run(ctx, &cfg, log); appErr != nil {
+		if errors.Is(appErr, context.Canceled) {
+			log.Info("application stopped gracefully")
+			return nil
+		}
+		return fmt.Errorf("app run: %w", appErr)
 	}
 
-	log.Infow("shutdown complete")
+	log.Info("shutdown complete")
+	return nil
 }

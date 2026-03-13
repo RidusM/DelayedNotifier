@@ -32,9 +32,6 @@ func RetryDelay(delay time.Duration) Option {
 }
 
 func (s *NotifyService) validate() error {
-	if s.queryLimit <= 0 {
-		return errors.New("invalid batch size: must be > 0")
-	}
 	if s.maxRetries <= 0 {
 		return errors.New("invalid max retries: must be > 0")
 	}

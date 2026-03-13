@@ -1,21 +1,11 @@
 package httpt
 
 import (
-	"context"
-
-	"delayednotifier/internal/entity"
 	"delayednotifier/internal/service"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 	"github.com/wb-go/wbf/logger"
 )
-
-type NotifyService interface {
-	Create(ctx context.Context, req CreateNotificationRequest) (*entity.Notification, error)
-	GetStatus(ctx context.Context, id uuid.UUID) (*entity.Notification, error)
-	Cancel(ctx context.Context, id uuid.UUID) error
-}
 
 type NotifyHandler struct {
 	svc    *service.NotifyService

@@ -21,24 +21,20 @@ const (
 
 type CacheRepository struct {
 	rdb *rediswbf.Client
-	ttl time.Duration
 }
 
-func NewCacheRepository(rdb *rediswbf.Client, ttl time.Duration) *CacheRepository {
-	if ttl == 0 {
-		ttl = _defaultTTL
-	}
-	return &CacheRepository{rdb: rdb, ttl: ttl}
+func NewCacheRepository(rdb *rediswbf.Client) *CacheRepository {
+	return &CacheRepository{rdb: rdb}
 }
 
-func (s *CacheRepository) GetCacheKey(id uuid.UUID) string {
+func (r *CacheRepository) GetCacheKey(id uuid.UUID) string {
 	return _cacheKeyPrefix + id.String()
 }
 
-func (s *CacheRepository) GetFromCache(ctx context.Context, key string) (*entity.Notification, error) {
+func (r *CacheRepository) GetFromCache(ctx context.Context, key string) (*entity.Notification, error) {
 	const op = "repository.cache.GetFromCache"
 
-	cached, err := s.rdb.Get(ctx, key)
+	cached, err := r.rdb.Get(ctx, key)
 	if err != nil {
 		if errors.Is(err, redis.Nil) {
 			return nil, entity.ErrDataNotFound
@@ -57,7 +53,7 @@ func (s *CacheRepository) GetFromCache(ctx context.Context, key string) (*entity
 	return &notification, nil
 }
 
-func (s *CacheRepository) SaveToCache(ctx context.Context, key string, notification *entity.Notification) error {
+func (r *CacheRepository) SaveToCache(ctx context.Context, key string, notification *entity.Notification) error {
 	const op = "repository.cache.SaveToCache"
 
 	data, err := json.Marshal(notification)
@@ -65,17 +61,17 @@ func (s *CacheRepository) SaveToCache(ctx context.Context, key string, notificat
 		return fmt.Errorf("%s: marshal: %w", op, err)
 	}
 
-	if setErr := s.rdb.SetWithExpiration(ctx, key, data, s.ttl); setErr != nil {
+	if setErr := r.rdb.SetWithExpiration(ctx, key, data, _defaultTTL); setErr != nil {
 		return fmt.Errorf("%s: redis set: %w", op, setErr)
 	}
 
 	return nil
 }
 
-func (s *CacheRepository) InvalidateCache(ctx context.Context, id uuid.UUID) error {
+func (r *CacheRepository) InvalidateCache(ctx context.Context, id uuid.UUID) error {
 	const op = "repository.cache.InvalidateCache"
 
-	if err := s.rdb.Del(ctx, s.GetCacheKey(id)); err != nil {
+	if err := r.rdb.Del(ctx, r.GetCacheKey(id)); err != nil {
 		if errors.Is(err, redis.Nil) {
 			return nil
 		}

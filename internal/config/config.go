@@ -15,7 +15,7 @@ type (
 		TG        TG        `env-prefix:"TG_"`
 		HTTP      HTTP      `env-prefix:"HTTP_"`
 		Logger    Logger    `env-prefix:"LOGGER_"`
-		Env       string    `                      env:"ENV" env-default:"local" validate:"oneof=local dev staging prod"`
+		Env       string    `                      env:"ENV" env-default:"local" validate:"required,oneof=local dev staging prod"`
 	}
 
 	App struct {
@@ -38,23 +38,21 @@ type (
 	}
 
 	Cache struct {
-		Addr        string        `env:"ADDR"          env-default:"localhost:6379" validate:"required"`
-		Password    string        `env:"PASSWORD"      env-default:""`
-		PoolSize    int           `env:"POOL_SIZE"     env-default:"20"             validate:"min=1,max=100"`
-		MinIdleCons int           `env:"MIN_IDLE_CONS" env-default:"10"             validate:"min=1,max=100"`
-		PoolTimeout time.Duration `env:"POOL_TIMEOUT"  env-default:"4s"             validate:"gte=10ms,lte=10s"`
+		Addr     string `env:"ADDR"     env-default:"localhost:6379" validate:"required"`
+		Password string `env:"PASSWORD" env-default:""`
 	}
 
 	Publisher struct {
-		URL            string        `env:"URL"             env-default:"amqp://guest:guest@localhost:5672/" validate:"required"`
-		ConnectionName string        `env:"CONNECTION_NAME" env-default:"delayed-notifier-publisher"         validate:"required"`
-		ConnectTimeout time.Duration `env:"CONNECT_TIMEOUT" env-default:"30s"                                validate:"gte=1s,lte=60s"`
-		Heartbeat      time.Duration `env:"HEARTBEAT"       env-default:"10s"                                validate:"gte=1s,lte=60s"`
-		Exchange       string        `env:"EXCHANGE"        env-default:"notifications"                      validate:"required"`
-		ContentType    string        `env:"CONTENT_TYPE"    env-default:"application/json"                   validate:"required"`
-		Attempts       int           `env:"ATTEMPTS"        env-default:"3"                                  validate:"min=1,max=10"`
-		Delay          time.Duration `env:"DELAY"           env-default:"1s"                                 validate:"gte=10ms,lte=5m"`
-		Backoff        float64       `env:"BACKOFF"         env-default:"2.0"                                validate:"gte=1.0,lte=5.0"`
+		URL            string        `env:"URL"             validate:"required"`
+		ConnectionName string        `env:"CONNECTION_NAME"                           env-default:"delayed-notifier-publisher"`
+		ConnectTimeout time.Duration `env:"CONNECT_TIMEOUT" validate:"gte=1s,lte=60s" env-default:"30s"`
+		Heartbeat      time.Duration `env:"HEARTBEAT"       validate:"gte=1s,lte=60s" env-default:"10s"`
+		Exchange       string        `env:"EXCHANGE"        validate:"required"       env-default:"notifications"`
+		ContentType    string        `env:"CONTENT_TYPE"                              env-default:"application/json"`
+
+		Attempts int           `env:"ATTEMPTS" env-default:"3"   validate:"min=1,max=10"`
+		Delay    time.Duration `env:"DELAY"    env-default:"1s"  validate:"gte=10ms,lte=5m"`
+		Backoff  float64       `env:"BACKOFF"  env-default:"2.0" validate:"gte=1.0,lte=5.0"`
 	}
 
 	SMTP struct {
@@ -66,7 +64,7 @@ type (
 	}
 
 	TG struct {
-		Token string `env:"TOKEN" validate:"required"`
+		Token string `env:"TOKEN"`
 	}
 
 	HTTP struct {

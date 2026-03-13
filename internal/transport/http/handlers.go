@@ -34,26 +34,14 @@ func (h *NotifyHandler) CreateNotification(c *gin.Context) {
 	}
 
 	channel := entity.Channel(req.Channel)
-	if !isValidChannel(channel) {
+	if !channel.IsValid() {
 		h.respondError(c, http.StatusBadRequest, "invalid_channel",
 			"Channel must be one of: telegram, email", nil)
 		return
 	}
 
-	if req.Recipient == "" {
-		h.respondError(c, http.StatusBadRequest, "invalid_recipient",
-			"Recipient is required", nil)
-		return
-	}
-
 	if req.ScheduledAt.IsZero() {
 		h.respondError(c, http.StatusBadRequest, "invalid_scheduled_at", "Scheduled time is required", nil)
-		return
-	}
-
-	if req.ScheduledAt.Before(time.Now().UTC()) {
-		h.respondError(c, http.StatusBadRequest, "invalid_scheduled_at",
-			"Scheduled time must be in the future", nil)
 		return
 	}
 
@@ -113,14 +101,13 @@ func (h *NotifyHandler) GetStatus(c *gin.Context) {
 
 	response := NotificationStatusResponse{
 		ID:          notification.ID.String(),
-		UserID:      notification.UserID.String(),
 		Channel:     string(notification.Channel),
 		Status:      notification.Status.String(),
 		Payload:     notification.Payload,
 		ScheduledAt: notification.ScheduledAt,
 		SentAt:      notification.SentAt,
 		RetryCount:  notification.RetryCount,
-		LastError:   nullableString(notification.LastError),
+		LastError:   notification.LastError,
 		CreatedAt:   notification.CreatedAt,
 	}
 

@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
-	"strings"
 	"time"
 
 	"delayednotifier/internal/entity"
@@ -47,6 +46,51 @@ func NewTelegramSender(botToken string, log logger.Logger) (*TelegramSender, err
 	}, nil
 }
 
+func (s *TelegramSender) StartPolling(
+	ctx context.Context,
+	onSubscribe func(ctx context.Context, username string, chatID int64) error,
+) {
+	u := tgbotapi.NewUpdate(0)
+	u.Timeout = 60
+	updates := s.bot.GetUpdatesChan(u)
+
+	for {
+		select {
+		case update := <-updates:
+			if update.Message == nil || update.Message.Text != "/start" {
+				continue
+			}
+			if update.Message.From.UserName == "" {
+				msg := tgbotapi.NewMessage(update.Message.Chat.ID,
+					"Для подписки необходим username в Telegram.")
+				if _, botErr := s.bot.Send(msg); botErr != nil {
+					s.log.LogAttrs(ctx, logger.ErrorLevel, "To subscribe need yours telegram username",
+						logger.Any("error", botErr))
+				}
+				continue
+			}
+
+			username := "@" + update.Message.From.UserName
+			chatID := update.Message.Chat.ID
+
+			if err := onSubscribe(ctx, username, chatID); err != nil {
+				s.log.LogAttrs(ctx, logger.ErrorLevel, "failed to save subscriber",
+					logger.String("username", username), logger.Any("error", err))
+				continue
+			}
+
+			msg := tgbotapi.NewMessage(chatID, "Вы подписались на уведомления!")
+			if _, botErr := s.bot.Send(msg); botErr != nil {
+				s.log.LogAttrs(ctx, logger.ErrorLevel, "failed to send message",
+					logger.Any("error", botErr))
+			}
+
+		case <-ctx.Done():
+			return
+		}
+	}
+}
+
 func (s *TelegramSender) Send(ctx context.Context, n entity.Notification) error {
 	const op = "sender.telegram.Send"
 
@@ -54,13 +98,7 @@ func (s *TelegramSender) Send(ctx context.Context, n entity.Notification) error 
 		return fmt.Errorf("%s: context error: %w", op, err)
 	}
 
-	recipient := n.RecipientIdentifier
-
-	if strings.HasPrefix(recipient, "@") {
-		return s.sendMessageByUsername(ctx, op, recipient, n)
-	} else {
-		return s.sendMessageByChatID(ctx, op, recipient, n)
-	}
+	return s.sendMessageByChatID(ctx, op, n.RecipientIdentifier, n)
 }
 
 func (s *TelegramSender) sendMessageByChatID(ctx context.Context, op, chatIDStr string, n entity.Notification) error {
@@ -86,34 +124,6 @@ func (s *TelegramSender) sendMessageByChatID(ctx context.Context, op, chatIDStr 
 	s.log.LogAttrs(ctx, logger.InfoLevel, "telegram message sent successfully by chat_id",
 		logger.String("notification_id", n.ID.String()),
 		logger.Int64("chat_id", chatID),
-	)
-
-	return nil
-}
-
-func (s *TelegramSender) sendMessageByUsername(ctx context.Context, op, username string, n entity.Notification) error {
-	if len(username) <= 1 {
-		return fmt.Errorf("%s: invalid username %q: too short", op, username)
-	}
-
-	textToSend := s.extractTextFromPayload(n.Payload)
-
-	msg := tgbotapi.NewMessageToChannel(username, textToSend)
-	msg.ParseMode = "Markdown"
-
-	s.log.LogAttrs(ctx, logger.DebugLevel, "sending telegram message by username",
-		logger.String("username", username),
-		logger.String("notification_id", n.ID.String()),
-	)
-
-	_, err := s.bot.Send(msg)
-	if err != nil {
-		return fmt.Errorf("%s: send to username %q failed: %w", op, username, err)
-	}
-
-	s.log.LogAttrs(ctx, logger.InfoLevel, "telegram message sent successfully by username",
-		logger.String("notification_id", n.ID.String()),
-		logger.String("username", username),
 	)
 
 	return nil

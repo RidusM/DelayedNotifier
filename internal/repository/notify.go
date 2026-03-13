@@ -34,11 +34,11 @@ func (r *NotifyRepository) Create(
 ) error {
 	const op = "repository.notify.Create"
 
-	executor := r.exec(qe)
+	executor := execOrDB(qe, r.db)
 
 	sql, args, err := r.db.Insert("notifications").
 		Columns("id", "user_id", "channel", "payload", "scheduled_at", "status", "created_at", "recipient_identifier").
-		Values(notify.ID, notify.UserID, notify.Channel, notify.Payload, notify.ScheduledAt, notify.Status, notify.CreatedAt, notify.RecipientIdentifier).
+		Values(notify.ID, notify.Channel, notify.Payload, notify.ScheduledAt, notify.Status, notify.CreatedAt, notify.RecipientIdentifier).
 		ToSql()
 	if err != nil {
 		return fmt.Errorf("%s: insert query: %w", op, err)
@@ -64,7 +64,7 @@ func (r *NotifyRepository) GetByID(
 ) (*entity.Notification, error) {
 	const op = "repository.notify.GetByID"
 
-	executor := r.exec(qe)
+	executor := execOrDB(qe, r.db)
 
 	query := r.db.Select(_notificationColumns).
 		From("notifications").
@@ -82,7 +82,6 @@ func (r *NotifyRepository) GetByID(
 	result := &entity.Notification{}
 	err = executor.QueryRow(ctx, sql, args...).Scan(
 		&result.ID,
-		&result.UserID,
 		&result.Channel,
 		&result.Payload,
 		&result.ScheduledAt,
@@ -110,7 +109,7 @@ func (r *NotifyRepository) GetForProcess(
 ) ([]entity.Notification, error) {
 	const op = "repository.notify.GetForProcess"
 
-	executor := r.exec(qe)
+	executor := execOrDB(qe, r.db)
 
 	if limit == 0 {
 		return nil, fmt.Errorf("%s: limit must be > 0", op)
@@ -134,12 +133,11 @@ func (r *NotifyRepository) GetForProcess(
 	}
 	defer rows.Close()
 
-	var notifies []entity.Notification
+	notifies := make([]entity.Notification, 0)
 	for rows.Next() {
 		var notify entity.Notification
 		if err = rows.Scan(
 			&notify.ID,
-			&notify.UserID,
 			&notify.Channel,
 			&notify.Payload,
 			&notify.ScheduledAt,
@@ -170,41 +168,31 @@ func (r *NotifyRepository) UpdateStatus(
 	lastErr *string,
 ) error {
 	const op = "repository.notify.UpdateStatus"
-
-	executor := r.exec(qe)
+	executor := execOrDB(qe, r.db)
 
 	update := r.db.Update("notifications").
 		Set("status", status).
+		Set("last_error", lastErr).
 		Where(squirrel.Eq{"id": id})
 
-	if lastErr != nil {
-		update = update.Set("last_error", *lastErr)
-	} else {
-		update = update.Set("last_error", nil)
-	}
-
-	// nolint: exhaustive
 	switch status {
 	case entity.StatusSent:
 		update = update.Set("sent_at", time.Now().UTC())
 	case entity.StatusFailed:
 		update = update.Set("retry_count", squirrel.Expr("retry_count + 1"))
-	case entity.StatusCancelled:
-		update = update.Set("sent_at", nil)
-	case entity.StatusInProcess:
-		break
+	case entity.StatusCancelled, entity.StatusInProcess, entity.StatusWaiting:
 	default:
 		return fmt.Errorf("%s: unknown status: %v", op, status)
 	}
 
 	sql, args, err := update.ToSql()
 	if err != nil {
-		return fmt.Errorf("%s: update query: %w", op, err)
+		return fmt.Errorf("%s: build query: %w", op, err)
 	}
 
 	res, err := executor.Exec(ctx, sql, args...)
 	if err != nil {
-		return fmt.Errorf("%s: %w", op, err)
+		return fmt.Errorf("%s: execute: %w", op, err)
 	}
 
 	if res.RowsAffected() == 0 {
@@ -222,7 +210,7 @@ func (r *NotifyRepository) RescheduleNotification(
 ) error {
 	const op = "repository.notify.RescheduleNotification"
 
-	executor := r.exec(qe)
+	executor := execOrDB(qe, r.db)
 
 	sql, args, err := r.db.Update("notifications").
 		Set("scheduled_at", newScheduledAt).
@@ -244,11 +232,4 @@ func (r *NotifyRepository) RescheduleNotification(
 	}
 
 	return nil
-}
-
-func (r *NotifyRepository) exec(qe pgxdriver.QueryExecuter) pgxdriver.QueryExecuter {
-	if qe != nil {
-		return qe
-	}
-	return r.db
 }
