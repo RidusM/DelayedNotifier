@@ -1,0 +1,199 @@
+basePath: /
+definitions:
+  httpt.CreateNotificationRequest:
+    properties:
+      channel:
+        example: email
+        type: string
+      payload:
+        example: 'Your order #123 is ready!'
+        type: string
+      recipient:
+        example: user@example.com
+        type: string
+      scheduled_at:
+        example: "2023-10-27T10:00:00Z"
+        type: string
+    type: object
+  httpt.CreateNotificationResponse:
+    properties:
+      channel:
+        example: email
+        type: string
+      id:
+        example: 550e8400-e29b-41d4-a716-446655440001
+        type: string
+      message:
+        example: Notification created successfully
+        type: string
+      payload:
+        example: 'Your order #123 is ready!'
+        type: string
+      recipient:
+        example: user@example.com
+        type: string
+      scheduled_at:
+        example: "2023-10-27T10:00:00Z"
+        type: string
+    type: object
+  httpt.ErrorResponse:
+    properties:
+      code:
+        example: not_found
+        type: string
+      details:
+        example: notification with id 123 does not exist
+        type: string
+      error:
+        example: notification not found
+        type: string
+    type: object
+  httpt.NotificationStatusResponse:
+    properties:
+      channel:
+        example: EMAIL
+        type: string
+      created_at:
+        example: "2023-10-26T10:00:00Z"
+        type: string
+      id:
+        example: 550e8400-e29b-41d4-a716-446655440001
+        type: string
+      last_error:
+        example: connection timeout
+        type: string
+      payload:
+        example: 'Your order #123 is ready!'
+        type: string
+      retry_count:
+        example: 1
+        type: integer
+      scheduled_at:
+        example: "2023-10-27T10:00:00Z"
+        type: string
+      sent_at:
+        example: "2023-10-27T10:00:05Z"
+        type: string
+      status:
+        example: waiting
+        type: string
+    type: object
+  httpt.SuccessResponse:
+    properties:
+      message:
+        example: Notification cancelled successfully
+        type: string
+    type: object
+host: localhost:8080
+info:
+  contact:
+    email: stormkillpeople@gmail.com
+    name: RidusM
+  description: API для работы с уведомлениями
+  license:
+    name: MIT-0
+    url: https://github.com/aws/mit-0
+  termsOfService: http://swagger.io/terms/
+  title: Notification Service API
+  version: "1.0"
+paths:
+  /notify:
+    post:
+      consumes:
+      - application/json
+      description: Планирует отправку уведомления на указанное время
+      parameters:
+      - description: Данные уведомления
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/httpt.CreateNotificationRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Уведомление создано
+          schema:
+            $ref: '#/definitions/httpt.CreateNotificationResponse'
+        "400":
+          description: Ошибка валидации
+          schema:
+            $ref: '#/definitions/httpt.ErrorResponse'
+        "500":
+          description: Внутренняя ошибка
+          schema:
+            $ref: '#/definitions/httpt.ErrorResponse'
+      summary: Создать уведомление
+      tags:
+      - Notification
+  /notify/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: Отменяет запланированное уведомление
+      parameters:
+      - description: Уникальный идентификатор уведомления
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Успешный ответ
+          schema:
+            $ref: '#/definitions/httpt.SuccessResponse'
+        "400":
+          description: Неверный формат notify_id
+          schema:
+            $ref: '#/definitions/httpt.ErrorResponse'
+        "404":
+          description: Уведомление не найдено
+          schema:
+            $ref: '#/definitions/httpt.ErrorResponse'
+        "409":
+          description: Уведомление уже отправлено или отменено
+          schema:
+            $ref: '#/definitions/httpt.ErrorResponse'
+        "500":
+          description: Внутренняя ошибка сервера
+          schema:
+            $ref: '#/definitions/httpt.ErrorResponse'
+      summary: Отменить уведомление
+      tags:
+      - Notification
+    get:
+      consumes:
+      - application/json
+      description: Возвращает статус уведомления по уникальному идентификатору
+      parameters:
+      - description: Уникальный идентификатор уведомления
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Успешный ответ с статусом уведомления
+          schema:
+            $ref: '#/definitions/httpt.NotificationStatusResponse'
+        "400":
+          description: Неверный формат notify_id
+          schema:
+            $ref: '#/definitions/httpt.ErrorResponse'
+        "404":
+          description: Уведомление не найдено
+          schema:
+            $ref: '#/definitions/httpt.ErrorResponse'
+        "500":
+          description: Внутренняя ошибка сервера
+          schema:
+            $ref: '#/definitions/httpt.ErrorResponse'
+      summary: Получить статус уведомления
+      tags:
+      - Notification
+swagger: "2.0"
