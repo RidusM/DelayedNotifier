@@ -56,6 +56,7 @@ func (r *UserRepository) GetByID(ctx context.Context,
 	id uuid.UUID,
 ) (*entity.User, error) {
 	const op = "repository.user.GetByID"
+
 	sql, args, err := r.db.Select(_userColumns).
 		From("users").
 		Where(squirrel.Eq{"id": id}).
@@ -86,6 +87,7 @@ func (r *UserRepository) GetByTelegramID(ctx context.Context,
 	chatID *int64,
 ) (*entity.User, error) {
 	const op = "repository.user.GetByTelegramID"
+
 	sql, args, err := r.db.Select(_userColumns).
 		From("users").
 		Where(squirrel.Eq{"telegram_id": chatID}).
@@ -117,6 +119,7 @@ func (r *UserRepository) UpdateTelegramID(ctx context.Context,
 	chatID *int64,
 ) error {
 	const op = "repository.user.UpdateTelegramID"
+	
 	sql, args, err := r.db.Update("users").
 		Set("telegram_id", chatID).
 		Where(squirrel.Eq{"id": userID}).
