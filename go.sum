@@ -8,8 +8,8 @@ github.com/PuerkitoBio/purell v1.1.1 h1:WEQqlqaGbrPkxLJWfBwQmfEAE1Z7ONdDLqrN38tN
 github.com/PuerkitoBio/purell v1.1.1/go.mod h1:c11w/QuzBsJSee3cPx9rAFu61PvFxuPbtSwDGJws/X0=
 github.com/PuerkitoBio/urlesc v0.0.0-20170810143723-de5bf2ad4578 h1:d+Bc7a5rLufV/sSk/8dngufqelfh6jnri85riMAaF/M=
 github.com/PuerkitoBio/urlesc v0.0.0-20170810143723-de5bf2ad4578/go.mod h1:uGdkoq3SwY9Y+13GIhn11/XLaGBb4BfwItxLd5jeuXE=
-github.com/RidusM/wbf v0.0.0-20260506054609-f52dd8e82b5d h1:S7UmiS3K6er3BJji4bjk10jpwXtZiWD8/oFZbuSNFac=
-github.com/RidusM/wbf v0.0.0-20260506054609-f52dd8e82b5d/go.mod h1:rm5PR6mbAlOnhacTFLFF6+d9v0cL9mXt7uukehqM6JQ=
+github.com/RidusM/wbf v0.0.0-20260506095732-f68e0e85bfbb h1:Li0w+SA9QWpTMFezoiJOQS4moUL9cqaFgliySD7LkZc=
+github.com/RidusM/wbf v0.0.0-20260506095732-f68e0e85bfbb/go.mod h1:rm5PR6mbAlOnhacTFLFF6+d9v0cL9mXt7uukehqM6JQ=
 github.com/benbjohnson/clock v1.1.0 h1:Q92kusRqC1XV2MjkWETPvjJVqKetz1OzxZB7mHJLju8=
 github.com/benbjohnson/clock v1.1.0/go.mod h1:J11/hYXuz8f4ySSvYwY0FKfm+ezbsZBKZxNJlLklBHA=
 github.com/bytedance/gopkg v0.1.3 h1:TPBSwH8RsouGCBcMBktLt1AymVo2TVsBVCY4b6TnZ/M=
