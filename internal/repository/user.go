@@ -119,7 +119,7 @@ func (r *UserRepository) UpdateTelegramID(ctx context.Context,
 	chatID *int64,
 ) error {
 	const op = "repository.user.UpdateTelegramID"
-	
+
 	sql, args, err := r.db.Update("users").
 		Set("telegram_id", chatID).
 		Where(squirrel.Eq{"id": userID}).
