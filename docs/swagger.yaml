@@ -53,12 +53,16 @@ definitions:
         enum:
         - telegram
         - email
+        example: telegram
       payload:
+        example: Don't forget to check the server status!
         maxLength: 100000
         type: string
       scheduled_at:
+        example: "2026-05-08T12:00:00Z"
         type: string
       user_id:
+        example: 550e8400-e29b-41d4-a716-446655440001
         type: string
     required:
     - channel
@@ -69,24 +73,28 @@ definitions:
   handler.ErrorResponse:
     properties:
       code:
-        example: not_found
+        example: invalid_data
         type: string
       details:
-        example: notify with id 123 does not exist
+        example: 'Field: ''Email'', Error: ''email'''
         type: string
       error:
-        example: notify not found
+        example: validation failed
         type: string
     type: object
   handler.LinkTokenResponse:
     properties:
       expires_in:
+        example: 1 hour
         type: string
       link:
+        example: https://t.me/mybot?start=abc123
         type: string
       message:
+        example: Click the link in Telegram to link your account
         type: string
       token:
+        example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
         type: string
     required:
     - expires_in
@@ -96,8 +104,10 @@ definitions:
   handler.NotificationCreatedResponse:
     properties:
       id:
+        example: 550e8400-e29b-41d4-a716-446655440002
         type: string
       message:
+        example: Notification scheduled successfully
         type: string
     required:
     - id
@@ -105,8 +115,10 @@ definitions:
   handler.RegisterUserRequest:
     properties:
       email:
+        example: john.doe@example.com
         type: string
       name:
+        example: John Doe
         maxLength: 100
         minLength: 1
         type: string
@@ -123,8 +135,11 @@ definitions:
   handler.UserRegisteredResponse:
     properties:
       message:
+        example: Registered via Email
         type: string
       user_id:
+        description: binding:"required,uuid"
+        example: 550e8400-e29b-41d4-a716-446655440003
         type: string
     required:
     - user_id

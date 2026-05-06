@@ -351,17 +351,21 @@ const docTemplate = `{
                         {
                             "$ref": "#/definitions/entity.Channel"
                         }
-                    ]
+                    ],
+                    "example": "telegram"
                 },
                 "payload": {
                     "type": "string",
-                    "maxLength": 100000
+                    "maxLength": 100000,
+                    "example": "Don't forget to check the server status!"
                 },
                 "scheduled_at": {
-                    "type": "string"
+                    "type": "string",
+                    "example": "2026-05-08T12:00:00Z"
                 },
                 "user_id": {
-                    "type": "string"
+                    "type": "string",
+                    "example": "550e8400-e29b-41d4-a716-446655440001"
                 }
             }
         },
@@ -370,15 +374,15 @@ const docTemplate = `{
             "properties": {
                 "code": {
                     "type": "string",
-                    "example": "not_found"
+                    "example": "invalid_data"
                 },
                 "details": {
                     "type": "string",
-                    "example": "notify with id 123 does not exist"
+                    "example": "Field: 'Email', Error: 'email'"
                 },
                 "error": {
                     "type": "string",
-                    "example": "notify not found"
+                    "example": "validation failed"
                 }
             }
         },
@@ -391,16 +395,20 @@ const docTemplate = `{
             ],
             "properties": {
                 "expires_in": {
-                    "type": "string"
+                    "type": "string",
+                    "example": "1 hour"
                 },
                 "link": {
-                    "type": "string"
+                    "type": "string",
+                    "example": "https://t.me/mybot?start=abc123"
                 },
                 "message": {
-                    "type": "string"
+                    "type": "string",
+                    "example": "Click the link in Telegram to link your account"
                 },
                 "token": {
-                    "type": "string"
+                    "type": "string",
+                    "example": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
                 }
             }
         },
@@ -411,10 +419,12 @@ const docTemplate = `{
             ],
             "properties": {
                 "id": {
-                    "type": "string"
+                    "type": "string",
+                    "example": "550e8400-e29b-41d4-a716-446655440002"
                 },
                 "message": {
-                    "type": "string"
+                    "type": "string",
+                    "example": "Notification scheduled successfully"
                 }
             }
         },
@@ -426,12 +436,14 @@ const docTemplate = `{
             ],
             "properties": {
                 "email": {
-                    "type": "string"
+                    "type": "string",
+                    "example": "john.doe@example.com"
                 },
                 "name": {
                     "type": "string",
                     "maxLength": 100,
-                    "minLength": 1
+                    "minLength": 1,
+                    "example": "John Doe"
                 }
             }
         },
@@ -451,10 +463,13 @@ const docTemplate = `{
             ],
             "properties": {
                 "message": {
-                    "type": "string"
+                    "type": "string",
+                    "example": "Registered via Email"
                 },
                 "user_id": {
-                    "type": "string"
+                    "description": "binding:\"required,uuid\"",
+                    "type": "string",
+                    "example": "550e8400-e29b-41d4-a716-446655440003"
                 }
             }
         }

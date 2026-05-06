@@ -3,7 +3,7 @@ package handler
 import (
 	"net/http"
 
-	_ "delayednotifier/docs" //
+	_ "delayednotifier/docs" // required for Swagger
 
 	"github.com/gin-gonic/gin"
 	swaggerFiles "github.com/swaggo/files"
