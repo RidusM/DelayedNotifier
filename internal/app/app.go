@@ -156,7 +156,7 @@ func initServices(
 
 	publisher := rabbitmq.NewPublisher(rmq, cfg.Publisher.Exchange, cfg.Publisher.ContentType)
 
-	svc, err := service.NewNotifyService(
+	svc := service.NewNotifyService(
 		notifyRepo,
 		userRepo,
 		cacheRepo,
@@ -168,9 +168,6 @@ func initServices(
 		service.MaxRetries(cfg.Service.MaxRetries),
 		service.RetryDelay(cfg.Service.RetryDelay),
 	)
-	if err != nil {
-		return nil, nil, nil, fmt.Errorf("init service: %w", err)
-	}
 
 	handler := handler.NewNotifyHandler(svc, log, cfg.TG)
 	return svc, handler, teleSender, nil
