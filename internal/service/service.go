@@ -129,7 +129,6 @@ func NewNotifyService(
 	log logger.Logger,
 	opts ...Option,
 ) *NotifyService {
-	const op = "service.notify.NewNotifyService"
 	s := &NotifyService{
 		notifyRepo: notifyRepo,
 		userRepo:   userRepo,
