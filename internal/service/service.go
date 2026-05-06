@@ -262,7 +262,6 @@ func (s *NotifyService) LinkTelegramByToken(ctx context.Context, token string, c
 	)
 
 	err := s.tm.ExecuteInTransaction(ctx, "link_telegram_by_token", func(tx pgxdriver.QueryExecuter) error {
-
 		userID, err := s.userRepo.GetUserByLinkToken(ctx, tx, token)
 		if err != nil {
 			if errors.Is(err, entity.ErrDataNotFound) || errors.Is(err, entity.ErrInvalidData) {
@@ -271,7 +270,7 @@ func (s *NotifyService) LinkTelegramByToken(ctx context.Context, token string, c
 			return fmt.Errorf("%s: get user id by token: %w", op, err)
 		}
 
-		if err := s.userRepo.DeleteLinkToken(ctx, tx, token); err != nil {
+		if err = s.userRepo.DeleteLinkToken(ctx, tx, token); err != nil {
 			return fmt.Errorf("%s: delete token: %w", op, err)
 		}
 
@@ -280,13 +279,12 @@ func (s *NotifyService) LinkTelegramByToken(ctx context.Context, token string, c
 			return fmt.Errorf("%s: get user details: %w", op, err)
 		}
 
-		if err := s.userRepo.UpdateTelegramID(ctx, tx, user.ID, chatID); err != nil {
+		if err = s.userRepo.UpdateTelegramID(ctx, tx, user.ID, chatID); err != nil {
 			return transaction.HandleError("update_telegram_id", err)
 		}
 
 		return nil
 	})
-
 	if err != nil {
 		log.LogAttrs(ctx, logger.ErrorLevel, "link telegram by token failed", logger.Any("error", err))
 		return fmt.Errorf("%s: %w", op, err)
@@ -365,11 +363,6 @@ func (s *NotifyService) CreateNotify(ctx context.Context, req CreateNotification
 		ScheduledAt: req.ScheduledAt.UTC(),
 		Status:      entity.StatusWaiting,
 		CreatedAt:   time.Now().UTC(),
-	}
-
-	if err = notification.Validate(); err != nil {
-		log.LogAttrs(ctx, logger.WarnLevel, "entity validation failed", logger.Any("error", err))
-		return uuid.Nil, fmt.Errorf("%s: invalid entity: %w", op, err)
 	}
 
 	err = s.tm.ExecuteInTransaction(ctx, "create_notification", func(tx pgxdriver.QueryExecuter) error {

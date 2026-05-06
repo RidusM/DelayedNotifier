@@ -69,7 +69,10 @@ func (s *TelegramSender) StartPolling(
 
 			username := update.Message.From.UserName
 			if username == "" {
-				msg := tgbotapi.NewMessage(update.Message.Chat.ID, "Для привязки аккаунта необходим username в Telegram.")
+				msg := tgbotapi.NewMessage(
+					update.Message.Chat.ID,
+					"Для привязки аккаунта необходим username в Telegram.",
+				)
 				_, _ = s.bot.Send(msg)
 				continue
 			}

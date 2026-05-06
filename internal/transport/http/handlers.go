@@ -23,7 +23,6 @@ import (
 // @Failure 409 {object} ErrorResponse "Email already exists"
 // @Router /users [post]
 func (h *NotifyHandler) RegisterUser(c *gin.Context) {
-	const op = "transport.handler.RegisterUser"
 	ctx := c.Request.Context()
 
 	var req RegisterUserRequest
@@ -61,7 +60,7 @@ func (h *NotifyHandler) RegisterUser(c *gin.Context) {
 // @Failure 404 {object} ErrorResponse "User not found"
 // @Router /users/{user_id}/link-token [post]
 func (h *NotifyHandler) GenerateLinkToken(c *gin.Context) {
-	const op = "transport.handler.GenerateLinkToken"
+	ctx := c.Request.Context()
 
 	userIDStr := c.Param("user_id")
 	userID, err := uuid.Parse(userIDStr)
@@ -70,7 +69,7 @@ func (h *NotifyHandler) GenerateLinkToken(c *gin.Context) {
 		return
 	}
 
-	token, err := h.svc.GenerateLinkToken(c.Request.Context(), userID)
+	token, err := h.svc.GenerateLinkToken(ctx, userID)
 	if err != nil {
 		h.handleServiceError(c, err)
 		return
@@ -99,7 +98,6 @@ func (h *NotifyHandler) GenerateLinkToken(c *gin.Context) {
 // @Failure 500 {object} ErrorResponse "Internal server error"
 // @Router /notify [post]
 func (h *NotifyHandler) CreateNotification(c *gin.Context) {
-	const op = "transport.handler.CreateNotification"
 	ctx := c.Request.Context()
 
 	var req CreateNotificationRequest
@@ -147,7 +145,6 @@ func (h *NotifyHandler) CreateNotification(c *gin.Context) {
 // @Failure 404 {object} ErrorResponse "Notification not found"
 // @Router /notify/{id} [get]
 func (h *NotifyHandler) GetStatus(c *gin.Context) {
-	const op = "transport.handler.GetStatus"
 	ctx := c.Request.Context()
 
 	idStr := c.Param("id")
@@ -178,7 +175,6 @@ func (h *NotifyHandler) GetStatus(c *gin.Context) {
 // @Failure 409 {object} ErrorResponse "Notification already sent or cancelled"
 // @Router /notify/{id} [delete]
 func (h *NotifyHandler) CancelNotification(c *gin.Context) {
-	const op = "transport.handler.CancelNotification"
 	ctx := c.Request.Context()
 
 	idStr := c.Param("id")

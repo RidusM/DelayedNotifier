@@ -203,14 +203,14 @@ func (r *UserRepository) DeleteLinkToken(
 	token string,
 ) error {
 	const op = "repository.user.DeleteLinkToken"
-	
+
 	sql, args, err := r.db.Delete("user_link_tokens").
 		Where(squirrel.Eq{"token": token}).
 		ToSql()
 	if err != nil {
 		return fmt.Errorf("%s: %w", op, err)
 	}
-	
+
 	_, err = execOrDB(qe, r.db).Exec(ctx, sql, args...)
 	if err != nil {
 		return fmt.Errorf("%s: %w", op, err)
