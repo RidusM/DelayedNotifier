@@ -1,19 +1,102 @@
-MIT No Attribution
+# -----------------------------------------------------------------------------
+# Global Settings
+# -----------------------------------------------------------------------------
+# oneof: local, dev, staging, prod
+ENV=local
 
-Copyright 2025 RidusM
+# -----------------------------------------------------------------------------
+# Application Info
+# -----------------------------------------------------------------------------
+APP_NAME=lshortener
+APP_VERSION=1.0.0
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so.
+# -----------------------------------------------------------------------------
+# Service Logic (Shortener)
+# -----------------------------------------------------------------------------
+# min=4, max=12
+SERVICE_SHORT_CODE_LENGTH=6
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+# Duration format: ns, us, µs, ms, s, m, h. 
+# 0 means no expiration by default
+SERVICE_DEFAULT_TTL=0
 
+# Must be a valid URL
+SERVICE_BASE_URL=http://localhost:8080
+
+# min=1, max=10
+SERVICE_MAX_RETRIES=5
+
+# min=1, max=100
+SERVICE_QUERY_LIMIT=10
+
+# gte=1m, lte=1h
+SERVICE_RETRY_DELAY=5ms
+
+# -----------------------------------------------------------------------------
+# Database (PostgreSQL)
+# -----------------------------------------------------------------------------
+DB_DSN=postgres://postgres:postgres@localhost:5432/url_shortener?sslmode=disable
+
+# min=1, max=100
+DB_POOL_MAX=20
+
+# min=1, max=10
+DB_CONN_ATTEMPTS=5
+
+# gte=10ms, lte=10s
+DB_BASE_RETRY_DELAY=100ms
+
+# gte=100ms, lte=30s, must be >= DB_BASE_RETRY_DELAY
+DB_MAX_RETRY_DELAY=5s
+
+# -----------------------------------------------------------------------------
+# Cache (Redis)
+# -----------------------------------------------------------------------------
+CACHE_ADDR=localhost:6379
+CACHE_PASSWORD=
+# min=0, max=15
+CACHE_DB=0
+
+# gte=1s, lte=30s
+CACHE_DIAL_TIMEOUT=5s
+CACHE_READ_TIMEOUT=3s
+CACHE_WRITE_TIMEOUT=3s
+
+# min=1, max=100
+CACHE_POOL_SIZE=20
+
+# -----------------------------------------------------------------------------
+# HTTP Server
+# -----------------------------------------------------------------------------
+HTTP_HOST=0.0.0.0
+HTTP_PORT=8080
+
+# gte=1s, lte=30s
+HTTP_READ_TIMEOUT=5s
+HTTP_WRITE_TIMEOUT=5s
+HTTP_READ_HEADER_TIMEOUT=5s
+
+# gte=1s, lte=300s
+HTTP_IDLE_TIMEOUT=60s
+
+# gte=1s, lte=30s
+HTTP_SHUTDOWN_TIMEOUT=10s
+
+# gte=1024, lte=10485760 (1MB - 10MB)
+HTTP_MAX_HEADER_BYTES=1048576
+
+# -----------------------------------------------------------------------------
+# Logger
+# -----------------------------------------------------------------------------
+# oneof: debug, info, warn, error
+LOGGER_LEVEL=info
+LOGGER_FILENAME=./logs/lshortener.log
+
+# min=1, max=1000 (MB)
+LOGGER_MAX_SIZE=100
+
+# min=0, max=20
+LOGGER_MAX_BACKUPS=3
+
+# min=1, max=365 (days)
+LOGGER_MAX_AGE=28

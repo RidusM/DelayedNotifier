@@ -1,8 +1,6 @@
 package service
 
 import (
-	"errors"
-	"fmt"
 	"time"
 )
 
@@ -30,20 +28,4 @@ func QueryLimit(limit uint64) Option {
 			s.queryLimit = limit
 		}
 	}
-}
-
-func (s *NotifyService) validate() error {
-	if s.sender == nil {
-		return errors.New("sender is required")
-	}
-	if s.maxRetries <= 0 {
-		return fmt.Errorf("maxRetries must be > 0, got %d", s.maxRetries)
-	}
-	if s.retryDelay <= 0 {
-		return fmt.Errorf("retryDelay must be > 0, got %v", s.retryDelay)
-	}
-	if s.queryLimit <= 0 {
-		return fmt.Errorf("queryLimit must be > 0, got %d", s.queryLimit)
-	}
-	return nil
 }

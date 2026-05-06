@@ -147,10 +147,6 @@ func NewNotifyService(
 		opt(s)
 	}
 
-	if err := s.validate(); err != nil {
-		return nil, fmt.Errorf("%s: %w", op, err)
-	}
-
 	return s, nil
 }
 
