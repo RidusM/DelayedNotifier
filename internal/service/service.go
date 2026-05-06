@@ -128,7 +128,7 @@ func NewNotifyService(
 	publisher PublisherInterface,
 	log logger.Logger,
 	opts ...Option,
-) (*NotifyService, error) {
+) *NotifyService {
 	const op = "service.notify.NewNotifyService"
 	s := &NotifyService{
 		notifyRepo: notifyRepo,
@@ -147,7 +147,7 @@ func NewNotifyService(
 		opt(s)
 	}
 
-	return s, nil
+	return s
 }
 
 func (s *NotifyService) RegisterUser(ctx context.Context, req RegisterUserRequest) (*entity.User, error) {
