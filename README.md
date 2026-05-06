@@ -1,6 +1,7 @@
-# delayed-notifier
+# Delayed Notifier
 
 Сервис отложенных уведомлений. Принимает запросы на создание уведомлений с указанием времени отправки, хранит их в PostgreSQL, публикует в RabbitMQ в нужное время и отправляет через Email (SMTP) или Telegram (Bot API). При ошибке повторяет попытку с экспоненциальной задержкой.
+Поддерживает гибкую регистрацию пользователей: через сайт (Email) или Telegram-бота, с возможностью привязки аккаунтов через одноразовые токены.
 
 ---
 
@@ -11,7 +12,7 @@
 - [Быстрый старт](#быстрый-старт)
 - [Конфигурация](#конфигурация)
 - [API](#api)
-- [Telegram: подписка пользователей](#telegram-подписка-пользователей)
+- [Telegram: привязка аккаунта](#telegram-привязка-аккаунта)
 - [Настройка Email (Gmail)](#настройка-email-gmail)
 - [Разработка](#разработка)
 - [Структура проекта](#структура-проекта)
@@ -20,30 +21,32 @@
 
 ## Возможности
 
-- **REST API** — создание, получение статуса и отмена уведомлений
-- **Два канала доставки** — Email (SMTP) и Telegram (Bot API)
-- **Фоновая обработка** — периодический опрос БД, публикация в RabbitMQ
-- **Retry с экспоненциальной задержкой** — до `SERVICE_MAX_RETRIES` попыток
-- **Redis-кэш** — быстрый ответ на `GET /notify/{id}` без похода в БД
-- **Swagger UI** — `/swagger/index.html`
-- **Веб-интерфейс** — `/` для создания и мониторинга уведомлений без curl
+- **REST API** - регистрация пользователей, создание, получение статуса и отмена уведомлений
+- **Два канала доставки** - Email (SMTP) и Telegram (Bot API)
+- Гибкая идентификация - получатель определяется автоматически по `user_id` (Email берется из профиля, Telegram ID - из профиля или подписки бота)
+- **Привязка аккаунтов** - механизм Deep Linking (/start=TOKEN) для связи Email-аккаунта с Telegram
+- **Фоновая обработка** - периодический опрос БД, публикация в RabbitMQ
+- **Retry с экспоненциальной задержкой** - до `SERVICE_MAX_RETRIES` попыток
+- **Redis-кэш** - быстрый ответ на `GET /notify/{id}` без похода в БД
+- **Swagger UI** - `/swagger/index.html`
+- **Веб-интерфейс** - `/` для управления сервисом без curl
 
 ---
 
 ## Архитектура
 
 ```
-HTTP-запрос
+HTTP-запрос / Telegram Bot
     │
     ▼
-NotifyHandler (transport/http)
+NotifyHandler / Telegram Polling
     │
     ▼
-NotifyService (service)
+NotifyService (Бизнес-логика)
     │
-    ├── NotifyRepository    (PostgreSQL) — хранение уведомлений
+    ├── UserRepository      (PostgreSQL) — пользователи (email, telegram_id)
+    ├── NotifyRepository    (PostgreSQL) — уведомления
     ├── CacheRepository     (Redis)      — кэш статусов
-    ├── TelegramRepository  (PostgreSQL) — chat_id подписчиков бота
     └── Publisher           (RabbitMQ)   — публикация в очередь
            │
            ▼
@@ -178,6 +181,7 @@ make run
 | Переменная | Описание       |
 |------------|----------------|
 | `TG_TOKEN` | Токен бота     |
+| `TG_ALIAS` | Название бота  |
 
 ### HTTP-сервер
 
@@ -193,49 +197,90 @@ make run
 
 Полная документация доступна в Swagger UI: `http://localhost:8080/swagger/index.html`
 
-### `POST /notify` — создать уведомление
+### `POST /users` — Регистрация пользователя
+
+Регистрирует нового пользователя. После регистрации можно сгенерировать токен для привязки Telegram.
 
 ```bash
-curl -X POST http://localhost:8080/notify \
+curl -X POST http://localhost:8080/users \
   -H "Content-Type: application/json" \
   -d '{
-    "channel": "email",
-    "recipient": "user@example.com",
-    "payload": "Ваш заказ готов!",
-    "scheduled_at": "2026-04-01T10:00:00Z"
+    "name": "Ivan Ivanov",
+    "email": "ivan@example.com"
   }'
 ```
 
 **Ответ `201 Created`:**
 ```json
 {
-  "id": "019ce71c-4088-76a2-adca-a77577abcdef",
-  "channel": "email",
-  "recipient": "user@example.com",
-  "payload": "Ваш заказ готов!",
-  "scheduled_at": "2026-04-01T10:00:00Z",
-  "message": "Notification created successfully"
+  "user_id": "019dfc49-c0e1-7c10-ac4d-857493938405",
+  "message": "Registered via Email"
 }
 ```
-
-**Поле `recipient`:**
-- `email` — email-адрес: `user@example.com`
-- `telegram` — числовой `chat_id` пользователя: `123456789` (получается командой `/start` боту)
-
-**Payload для email** поддерживает JSON с отдельной темой:
-```json
-{
-  "channel": "email",
-  "recipient": "user@example.com",
-  "payload": "{\"subject\": \"Напоминание\", \"body\": \"<b>Ваш заказ готов!</b>\"}",
-  "scheduled_at": "2026-04-01T10:00:00Z"
-}
-```
-Если `payload` — не JSON, он используется как тело письма, тема будет `"Notification"`.
 
 ---
 
-### `GET /notify/{id}` — статус уведомления
+### `POST /users/:user_id/link-token` — Генерация ссылки для Telegram 
+
+Создает одноразовую ссылку для привязки Telegram-аккаунта к зарегистрированному пользователю. Ссылка действует 1 час.
+
+```bash
+curl -X POST http://localhost:8080/users/019dfc49-c0e1-7c10-ac4d-857493938405/link-token
+```
+
+**Ответ `200 OK`:**
+```json
+{
+  "token": "a1b2c3d4...",
+  "link": "https://t.me/MyBot?start=a1b2c3d4...",
+  "message": "Click the link in Telegram to link your account",
+  "expires_in": "1 hour"
+}
+```
+
+---
+
+### `POST /notify` — Создать уведомление
+
+Создает отложенное уведомление для зарегистрированного пользователя. Канал (Email/Telegram) выбирается автоматически на основе данных пользователя.
+
+```bash
+curl -X POST http://localhost:8080/notify \
+  -H "Content-Type: application/json" \
+  -d '{
+    "user_id": "019dfc49-c0e1-7c10-ac4d-857493938405",
+    "channel": "email",
+    "payload": "Ваш заказ готов!",
+    "scheduled_at": "2026-05-06T10:00:00Z"
+  }'
+```
+
+**Поле `channel`:**
+- `email` — отправка на Email пользователя (должен быть указан при регистрации).
+- `telegram` — отправка в Telegram (пользователь должен быть привязан через токен или зарегистрирован через бота).
+
+**Payload для email** поддерживает JSON с отдельной темой:
+
+```json
+{
+  "user_id": "...",
+  "channel": "email",
+  "payload": "{\"subject\": \"Напоминание\", \"body\": \"<b>Ваш заказ готов!</b>\"}",
+  "scheduled_at": "2026-05-06T10:00:00Z"
+}
+```
+
+**Ответ `201 Created`:**
+```json
+{
+  "id": "019ce71c-4088-76a2-adca-a77577abcdef",
+  "message": "Notification scheduled successfully"
+}
+```
+
+---
+
+### `GET /notify/{id}` — Статус уведомления
 
 ```bash
 curl http://localhost:8080/notify/019ce71c-4088-76a2-adca-a77577abcdef
@@ -245,13 +290,14 @@ curl http://localhost:8080/notify/019ce71c-4088-76a2-adca-a77577abcdef
 ```json
 {
   "id": "019ce71c-4088-76a2-adca-a77577abcdef",
+  "user_id": "019dfc49-c0e1-7c10-ac4d-857493938405",
   "channel": "email",
   "status": "sent",
   "payload": "Ваш заказ готов!",
-  "scheduled_at": "2026-04-01T10:00:00Z",
-  "sent_at": "2026-04-01T10:00:03Z",
+  "scheduled_at": "2026-05-06T10:00:00Z",
+  "sent_at": "2026-05-06T10:00:03Z",
   "retry_count": 0,
-  "created_at": "2026-03-30T12:00:00Z"
+  "created_at": "2026-05-06T09:00:00Z"
 }
 ```
 
@@ -267,45 +313,42 @@ curl http://localhost:8080/notify/019ce71c-4088-76a2-adca-a77577abcdef
 
 ---
 
-### `DELETE /notify/{id}` — отменить уведомление
+### `DELETE /notify/{id}` — Отменить уведомление
 
 ```bash
 curl -X DELETE http://localhost:8080/notify/019ce71c-4088-76a2-adca-a77577abcdef
 ```
 
-Отмена возможна только для уведомлений в статусе `waiting`. Попытка отменить `sent` или `cancelled` вернёт `409 Conflict`.
+Отмена возможна только для уведомлений в статусе `waiting`.
 
 ---
 
-### `GET /health` — проверка работоспособности
+### `GET /health` — Проверка работоспособности
 
 ```bash
 curl http://localhost:8080/health
-# {"status":"ok","time":"2026-04-01T10:00:00Z"}
+# {"status":"ok","time":"2026-05-06T10:00:00Z"}
 ```
 
 ---
 
-## Telegram: подписка пользователей
+## Telegram: Привязка аккаунта
 
-Чтобы отправить уведомление в Telegram, нужен числовой `chat_id` пользователя.
+Чтобы получать уведомления в Telegram, пользователь должен быть зарегистрирован в системе. Есть два способа:
 
-1. Создайте бота через [@BotFather](https://t.me/botfather), получите токен
-2. Установите `TG_TOKEN=<токен>` в `.env`
-3. Пользователь пишет боту команду `/start`
-4. Бот сохраняет `chat_id` в базу
-5. Используйте этот `chat_id` как `recipient` при создании уведомления
+### Способ 1: Регистрация через бота
 
-```bash
-curl -X POST http://localhost:8080/notify \
-  -H "Content-Type: application/json" \
-  -d '{
-    "channel": "telegram",
-    "recipient": "123456789",
-    "payload": "Привет из DelayedNotifier!",
-    "scheduled_at": "2026-04-01T10:00:00Z"
-  }'
-```
+- Пользователь пишет боту `/start`.
+- Бот создает нового пользователя в БД, привязывая его `chat_id`.
+- Уведомления можно слать на канал `telegram` для этого `user_id`.
+
+### Способ 2: Привязка к существующему Email-аккаунту (Deep Linking)
+
+- Пользователь регистрируется на сайте через `POST /users` (получает `user_id`).
+- Сайт генерирует ссылку через `POST /users/:user_id/link-token`.
+- Пользователь переходит по ссылке `t.me/Bot?start=TOKEN` и нажимает "Start".
+- Бот распознает токен, находит `user_id` и привязывает к нему текущий `chat_id`.
+- Теперь уведомления на канал `telegram` будут приходить этому пользователю.
 
 ---
 
@@ -313,10 +356,10 @@ curl -X POST http://localhost:8080/notify \
 
 Gmail требует **App Password** — обычный пароль не подходит.
 
-1. Включите двухфакторную аутентификацию в аккаунте Google
-2. Перейдите: [Google Account → Security → App Passwords](https://myaccount.google.com/apppasswords)
-3. Создайте пароль для приложения "Mail"
-4. Заполните `.env`:
+- Включите двухфакторную аутентификацию в аккаунте Google
+- Перейдите: [Google Account → Security → App Passwords](https://myaccount.google.com/apppasswords)
+- Создайте пароль для приложения "Mail"
+- Заполните `.env`:
 
 ```env
 SMTP_HOST=smtp.gmail.com
@@ -378,17 +421,14 @@ delayed-notifier/
 │   │   └── app.go               # Инициализация и запуск всех компонентов
 │   ├── config/
 │   │   └── config.go            # Конфигурация через env-переменные
-│   ├── entity/                  # Доменные типы: Notification, Status, Channel, ошибки
+│   ├── entity/                  # Доменные типы: Notification, User, Status, Channel
 │   ├── repository/              # Реализации репозиториев (PostgreSQL, Redis)
-│   │   └── mock/                # Сгенерированные моки для тестов
-│   ├── service/                 # Бизнес-логика: Create, GetStatus, Cancel, ProcessQueue
+│   ├── service/                 # Бизнес-логика: Register, Create, GetStatus, Cancel, ProcessQueue
 │   └── transport/
 │       ├── http/                # HTTP handlers, middleware, роутер (Gin)
 │       └── sender/              # EmailSender, TelegramSender, MultiSender
 │           └── mock/
 ├── migrations/                  # SQL-миграции (up/down)
-├── tests/
-│   └── integration/             # Интеграционные тесты + docker-compose для них
 ├── web/
 │   └── index.html               # Веб-интерфейс
 ├── docker-compose.yml
@@ -402,30 +442,44 @@ delayed-notifier/
 ## Схема БД
 
 ```sql
+-- Пользователи
+CREATE TABLE users (
+    id           UUID        PRIMARY KEY,
+    name         TEXT        NOT NULL,
+    email        TEXT        UNIQUE,            -- Может быть NULL, если регистрация через ТГ
+    telegram_id  BIGINT      UNIQUE,            -- Может быть NULL, если регистрация через Сайт
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Индексы для быстрого определения email/telegram
+CREATE INDEX idx_users_email ON users (email) WHERE email IS NOT NULL;
+CREATE INDEX idx_users_telegram_id ON users (telegram_id) WHERE telegram_id IS NOT NULL;
+
+-- Токены для привязки Telegram (одноразовые)
+CREATE TABLE user_link_tokens (
+    token      TEXT        PRIMARY KEY,
+    user_id    UUID        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    expires_at TIMESTAMPTZ NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- Уведомления
 CREATE TABLE notifications (
-    id                   UUID        PRIMARY KEY,
-    channel              TEXT        NOT NULL CHECK (channel IN ('telegram', 'email')),
-    payload              TEXT        NOT NULL,
-    recipient_identifier TEXT        NOT NULL,
-    scheduled_at         TIMESTAMPTZ NOT NULL,
-    sent_at              TIMESTAMPTZ,
-    status               TEXT        NOT NULL DEFAULT 'waiting'
-                                     CHECK (status IN ('waiting', 'in_process', 'sent', 'failed', 'cancelled')),
-    retry_count          INT         NOT NULL DEFAULT 0 CHECK (retry_count >= 0),
-    last_error           TEXT,
-    created_at           TIMESTAMPTZ NOT NULL DEFAULT now()
+    id           UUID        PRIMARY KEY,
+    user_id      UUID        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    channel      TEXT        NOT NULL CHECK (channel IN ('telegram', 'email')),
+    payload      TEXT        NOT NULL,
+    scheduled_at TIMESTAMPTZ NOT NULL,
+    sent_at      TIMESTAMPTZ,
+    status       TEXT        NOT NULL DEFAULT 'waiting'
+                             CHECK (status IN ('waiting', 'in_process', 'sent', 'failed', 'cancelled')),
+    retry_count  INT         NOT NULL DEFAULT 0 CHECK (retry_count >= 0),
+    last_error   TEXT,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 -- Индекс для быстрого выбора уведомлений к отправке
 CREATE INDEX idx_notifications_waiting_scheduled
-    ON notifications (scheduled_at, status)
+    ON notifications (scheduled_at ASC, id ASC)
     WHERE status = 'waiting';
-
--- Подписчики Telegram-бота (chat_id по username)
-CREATE TABLE telegram_subscribers (
-    username   TEXT        PRIMARY KEY,
-    chat_id    BIGINT      NOT NULL UNIQUE,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
 ```
