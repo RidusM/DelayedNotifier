@@ -1,7 +1,9 @@
-package httpt
+package handler
 
 import (
 	"net/http"
+
+	_ "delayednotifier/docs" //
 
 	"github.com/gin-gonic/gin"
 	swaggerFiles "github.com/swaggo/files"
@@ -10,7 +12,7 @@ import (
 
 // @title           Notification Service API
 // @version         1.0
-// @description     API для работы с уведомлениями
+// @description     API for working with notifications
 // @termsOfService  http://swagger.io/terms/
 // @contact.name    RidusM
 // @contact.email   stormkillpeople@gmail.com
@@ -21,13 +23,21 @@ import (
 func (h *NotifyHandler) setupRoutes() {
 	h.router.GET("/health", h.Health)
 
-	h.router.POST("/notify", h.CreateNotification)
-	h.router.GET("/notify/:id", h.GetStatus)
-	h.router.DELETE("/notify/:id", h.Cancel)
+	users := h.router.Group("/users")
+	{
+		users.POST("", h.RegisterUser)
+		users.POST("/:user_id/link-token", h.GenerateLinkToken)
+	}
+
+	notify := h.router.Group("/notify")
+	{
+		notify.POST("", h.CreateNotification)
+		notify.GET("/:id", h.GetStatus)
+		notify.DELETE("/:id", h.CancelNotification)
+	}
 
 	h.router.GET("/", func(c *gin.Context) {
 		c.HTML(http.StatusOK, "index.html", gin.H{})
 	})
-
 	h.router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 }

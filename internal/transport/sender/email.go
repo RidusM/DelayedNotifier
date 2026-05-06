@@ -15,7 +15,6 @@ import (
 
 const (
 	_maxSubjectLength = 255
-	_maxEmailLength   = 254
 )
 
 type EmailSender struct {
@@ -32,15 +31,15 @@ func NewEmailSender(smtpHost string, smtpPort int, username, password, from stri
 	}
 }
 
-func (s *EmailSender) Send(ctx context.Context, n entity.Notification) error {
+func (s *EmailSender) Send(ctx context.Context, n entity.Notification, recipient string) error {
 	const op = "sender.email.Send"
 
 	if err := ctx.Err(); err != nil {
 		return fmt.Errorf("%s: %w", op, err)
 	}
 
-	if len(n.RecipientIdentifier) > _maxEmailLength {
-		return fmt.Errorf("%s: recipient email too long (max 254 chars): %w", op, entity.ErrInvalidData)
+	if recipient == "" {
+		return fmt.Errorf("%s: recipient is empty: %w", op, entity.ErrInvalidData)
 	}
 
 	var payload struct {
@@ -56,17 +55,17 @@ func (s *EmailSender) Send(ctx context.Context, n entity.Notification) error {
 	}
 
 	if len(payload.Subject) > _maxSubjectLength {
-		return fmt.Errorf("%s: email subject too long (max 255 chars): %w", op, entity.ErrInvalidData)
+		return fmt.Errorf("%s: subject too long: %w", op, entity.ErrInvalidData)
 	}
 
 	m := gomail.NewMessage()
 	m.SetHeader("From", s.from)
-	m.SetHeader("To", n.RecipientIdentifier)
+	m.SetHeader("To", recipient)
 	m.SetHeader("Subject", mime.QEncoding.Encode("utf-8", payload.Subject))
 	m.SetBody("text/html", payload.Body)
 
 	s.log.LogAttrs(ctx, logger.DebugLevel, "sending email",
-		logger.String("to", n.RecipientIdentifier),
+		logger.String("to", recipient),
 		logger.String("notification_id", n.ID.String()),
 		logger.String("subject", payload.Subject),
 	)

@@ -1,6 +1,7 @@
-package httpt
+package handler
 
 import (
+	"net/http"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -9,10 +10,12 @@ import (
 
 func (h *NotifyHandler) requestIDMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		requestID := logger.GenerateRequestID()
-		ctx := logger.SetRequestID(c.Request.Context(), requestID)
+		reqID := logger.GenerateRequestID()
+		ctx := logger.SetRequestID(c.Request.Context(), reqID)
 		c.Request = c.Request.WithContext(ctx)
-		c.Header("X-Request-ID", requestID)
+
+		c.Header("X-Request-ID", reqID)
+
 		c.Next()
 	}
 }
@@ -33,5 +36,22 @@ func (h *NotifyHandler) loggingMiddleware() gin.HandlerFunc {
 			logger.Duration("duration", latency),
 			logger.String("client_ip", c.ClientIP()),
 		)
+	}
+}
+
+func (h *NotifyHandler) baseCORSMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
+		c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
+		c.Writer.Header().
+			Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, accept, origin, Cache-Control, X-Requested-With, X-Request-ID")
+		c.Writer.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS, GET, PUT, DELETE, PATCH")
+
+		if c.Request.Method == http.MethodOptions {
+			c.AbortWithStatus(http.StatusNoContent)
+			return
+		}
+
+		c.Next()
 	}
 }

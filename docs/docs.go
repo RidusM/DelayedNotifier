@@ -23,9 +23,32 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
+        "/health": {
+            "get": {
+                "description": "Return service status and current timestamp. No authentication required.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "System"
+                ],
+                "summary": "Health check endpoint",
+                "responses": {
+                    "200": {
+                        "description": "Service is healthy",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/notify": {
             "post": {
-                "description": "Планирует отправку уведомления на указанное время",
+                "description": "Schedules a notification to be sent to a specific user at a given time",
                 "consumes": [
                     "application/json"
                 ],
@@ -33,37 +56,37 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "Notification"
+                    "Notifications"
                 ],
-                "summary": "Создать уведомление",
+                "summary": "Create a scheduled notification",
                 "parameters": [
                     {
-                        "description": "Данные уведомления",
+                        "description": "Notification details",
                         "name": "request",
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/httpt.CreateNotificationRequest"
+                            "$ref": "#/definitions/handler.CreateNotificationRequest"
                         }
                     }
                 ],
                 "responses": {
                     "201": {
-                        "description": "Уведомление создано",
+                        "description": "Notification created",
                         "schema": {
-                            "$ref": "#/definitions/httpt.CreateNotificationResponse"
+                            "$ref": "#/definitions/handler.NotificationCreatedResponse"
                         }
                     },
                     "400": {
-                        "description": "Ошибка валидации",
+                        "description": "Invalid input data",
                         "schema": {
-                            "$ref": "#/definitions/httpt.ErrorResponse"
+                            "$ref": "#/definitions/handler.ErrorResponse"
                         }
                     },
                     "500": {
-                        "description": "Внутренняя ошибка",
+                        "description": "Internal server error",
                         "schema": {
-                            "$ref": "#/definitions/httpt.ErrorResponse"
+                            "$ref": "#/definitions/handler.ErrorResponse"
                         }
                     }
                 }
@@ -71,7 +94,7 @@ const docTemplate = `{
         },
         "/notify/{id}": {
             "get": {
-                "description": "Возвращает статус уведомления по уникальному идентификатору",
+                "description": "Returns the current status of a notification by its ID",
                 "consumes": [
                     "application/json"
                 ],
@@ -79,13 +102,13 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "Notification"
+                    "Notifications"
                 ],
-                "summary": "Получить статус уведомления",
+                "summary": "Get notification status",
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Уникальный идентификатор уведомления",
+                        "description": "Notification UUID",
                         "name": "id",
                         "in": "path",
                         "required": true
@@ -93,33 +116,27 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "Успешный ответ с статусом уведомления",
+                        "description": "Notification details",
                         "schema": {
-                            "$ref": "#/definitions/httpt.NotificationStatusResponse"
+                            "$ref": "#/definitions/entity.Notification"
                         }
                     },
                     "400": {
-                        "description": "Неверный формат notify_id",
+                        "description": "Invalid ID format",
                         "schema": {
-                            "$ref": "#/definitions/httpt.ErrorResponse"
+                            "$ref": "#/definitions/handler.ErrorResponse"
                         }
                     },
                     "404": {
-                        "description": "Уведомление не найдено",
+                        "description": "Notification not found",
                         "schema": {
-                            "$ref": "#/definitions/httpt.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Внутренняя ошибка сервера",
-                        "schema": {
-                            "$ref": "#/definitions/httpt.ErrorResponse"
+                            "$ref": "#/definitions/handler.ErrorResponse"
                         }
                     }
                 }
             },
             "delete": {
-                "description": "Отменяет запланированное уведомление",
+                "description": "Cancels a scheduled notification if it hasn't been sent yet",
                 "consumes": [
                     "application/json"
                 ],
@@ -127,13 +144,13 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "Notification"
+                    "Notifications"
                 ],
-                "summary": "Отменить уведомление",
+                "summary": "Cancel a notification",
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Уникальный идентификатор уведомления",
+                        "description": "Notification UUID",
                         "name": "id",
                         "in": "path",
                         "required": true
@@ -141,33 +158,111 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "Успешный ответ",
+                        "description": "Cancellation successful",
                         "schema": {
-                            "$ref": "#/definitions/httpt.SuccessResponse"
+                            "$ref": "#/definitions/handler.SuccessResponse"
                         }
                     },
                     "400": {
-                        "description": "Неверный формат notify_id",
+                        "description": "Invalid ID format",
                         "schema": {
-                            "$ref": "#/definitions/httpt.ErrorResponse"
+                            "$ref": "#/definitions/handler.ErrorResponse"
                         }
                     },
                     "404": {
-                        "description": "Уведомление не найдено",
+                        "description": "Notification not found",
                         "schema": {
-                            "$ref": "#/definitions/httpt.ErrorResponse"
+                            "$ref": "#/definitions/handler.ErrorResponse"
                         }
                     },
                     "409": {
-                        "description": "Уведомление уже отправлено или отменено",
+                        "description": "Notification already sent or cancelled",
                         "schema": {
-                            "$ref": "#/definitions/httpt.ErrorResponse"
+                            "$ref": "#/definitions/handler.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/users": {
+            "post": {
+                "description": "Registers a user to receive notifications via Email or Telegram",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Users"
+                ],
+                "summary": "Register a new user",
+                "parameters": [
+                    {
+                        "description": "User registration data",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handler.RegisterUserRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "User registered successfully",
+                        "schema": {
+                            "$ref": "#/definitions/handler.UserRegisteredResponse"
                         }
                     },
-                    "500": {
-                        "description": "Внутренняя ошибка сервера",
+                    "400": {
+                        "description": "Invalid input data",
                         "schema": {
-                            "$ref": "#/definitions/httpt.ErrorResponse"
+                            "$ref": "#/definitions/handler.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Email already exists",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/users/{user_id}/link-token": {
+            "post": {
+                "description": "Generates a one-time token to link the user's account with Telegram bot",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Users"
+                ],
+                "summary": "Generate Telegram Link Token",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "User UUID",
+                        "name": "user_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Link token and instruction",
+                        "schema": {
+                            "$ref": "#/definitions/handler.LinkTokenResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "User not found",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ErrorResponse"
                         }
                     }
                 }
@@ -175,57 +270,102 @@ const docTemplate = `{
         }
     },
     "definitions": {
-        "httpt.CreateNotificationRequest": {
-            "type": "object",
-            "properties": {
-                "channel": {
-                    "type": "string",
-                    "example": "email"
-                },
-                "payload": {
-                    "type": "string",
-                    "example": "Your order #123 is ready!"
-                },
-                "recipient": {
-                    "type": "string",
-                    "example": "user@example.com"
-                },
-                "scheduled_at": {
-                    "type": "string",
-                    "example": "2023-10-27T10:00:00Z"
-                }
-            }
+        "entity.Channel": {
+            "type": "string",
+            "enum": [
+                "telegram",
+                "email"
+            ],
+            "x-enum-varnames": [
+                "Telegram",
+                "Email"
+            ]
         },
-        "httpt.CreateNotificationResponse": {
+        "entity.Notification": {
             "type": "object",
             "properties": {
                 "channel": {
-                    "type": "string",
-                    "example": "email"
+                    "$ref": "#/definitions/entity.Channel"
+                },
+                "createdAt": {
+                    "type": "string"
                 },
                 "id": {
-                    "type": "string",
-                    "example": "550e8400-e29b-41d4-a716-446655440001"
+                    "type": "string"
                 },
-                "message": {
-                    "type": "string",
-                    "example": "Notification created successfully"
+                "lastError": {
+                    "type": "string"
                 },
                 "payload": {
-                    "type": "string",
-                    "example": "Your order #123 is ready!"
+                    "type": "string"
                 },
-                "recipient": {
-                    "type": "string",
-                    "example": "user@example.com"
+                "retryCount": {
+                    "type": "integer"
                 },
-                "scheduled_at": {
-                    "type": "string",
-                    "example": "2023-10-27T10:00:00Z"
+                "scheduledAt": {
+                    "type": "string"
+                },
+                "sentAt": {
+                    "type": "string"
+                },
+                "status": {
+                    "$ref": "#/definitions/entity.Status"
+                },
+                "userID": {
+                    "type": "string"
                 }
             }
         },
-        "httpt.ErrorResponse": {
+        "entity.Status": {
+            "type": "string",
+            "enum": [
+                "waiting",
+                "in_process",
+                "sent",
+                "failed",
+                "cancelled"
+            ],
+            "x-enum-varnames": [
+                "StatusWaiting",
+                "StatusInProcess",
+                "StatusSent",
+                "StatusFailed",
+                "StatusCancelled"
+            ]
+        },
+        "handler.CreateNotificationRequest": {
+            "type": "object",
+            "required": [
+                "channel",
+                "payload",
+                "scheduled_at",
+                "user_id"
+            ],
+            "properties": {
+                "channel": {
+                    "enum": [
+                        "telegram",
+                        "email"
+                    ],
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/entity.Channel"
+                        }
+                    ]
+                },
+                "payload": {
+                    "type": "string",
+                    "maxLength": 100000
+                },
+                "scheduled_at": {
+                    "type": "string"
+                },
+                "user_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "handler.ErrorResponse": {
             "type": "object",
             "properties": {
                 "code": {
@@ -234,61 +374,87 @@ const docTemplate = `{
                 },
                 "details": {
                     "type": "string",
-                    "example": "notification with id 123 does not exist"
+                    "example": "notify with id 123 does not exist"
                 },
                 "error": {
                     "type": "string",
-                    "example": "notification not found"
+                    "example": "notify not found"
                 }
             }
         },
-        "httpt.NotificationStatusResponse": {
+        "handler.LinkTokenResponse": {
             "type": "object",
+            "required": [
+                "expires_in",
+                "link",
+                "token"
+            ],
             "properties": {
-                "channel": {
-                    "type": "string",
-                    "example": "EMAIL"
+                "expires_in": {
+                    "type": "string"
                 },
-                "created_at": {
-                    "type": "string",
-                    "example": "2023-10-26T10:00:00Z"
+                "link": {
+                    "type": "string"
                 },
-                "id": {
-                    "type": "string",
-                    "example": "550e8400-e29b-41d4-a716-446655440001"
+                "message": {
+                    "type": "string"
                 },
-                "last_error": {
-                    "type": "string",
-                    "example": "connection timeout"
-                },
-                "payload": {
-                    "type": "string",
-                    "example": "Your order #123 is ready!"
-                },
-                "retry_count": {
-                    "type": "integer",
-                    "example": 1
-                },
-                "scheduled_at": {
-                    "type": "string",
-                    "example": "2023-10-27T10:00:00Z"
-                },
-                "sent_at": {
-                    "type": "string",
-                    "example": "2023-10-27T10:00:05Z"
-                },
-                "status": {
-                    "type": "string",
-                    "example": "waiting"
+                "token": {
+                    "type": "string"
                 }
             }
         },
-        "httpt.SuccessResponse": {
+        "handler.NotificationCreatedResponse": {
+            "type": "object",
+            "required": [
+                "id"
+            ],
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "handler.RegisterUserRequest": {
+            "type": "object",
+            "required": [
+                "email",
+                "name"
+            ],
+            "properties": {
+                "email": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string",
+                    "maxLength": 100,
+                    "minLength": 1
+                }
+            }
+        },
+        "handler.SuccessResponse": {
             "type": "object",
             "properties": {
                 "message": {
                     "type": "string",
-                    "example": "Notification cancelled successfully"
+                    "example": "Operation completed successfully"
+                }
+            }
+        },
+        "handler.UserRegisteredResponse": {
+            "type": "object",
+            "required": [
+                "user_id"
+            ],
+            "properties": {
+                "message": {
+                    "type": "string"
+                },
+                "user_id": {
+                    "type": "string"
                 }
             }
         }
@@ -302,7 +468,7 @@ var SwaggerInfo = &swag.Spec{
 	BasePath:         "/",
 	Schemes:          []string{},
 	Title:            "Notification Service API",
-	Description:      "API для работы с уведомлениями",
+	Description:      "API for working with notifications",
 	InfoInstanceName: "swagger",
 	SwaggerTemplate:  docTemplate,
 	LeftDelim:        "{{",

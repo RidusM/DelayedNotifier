@@ -11,6 +11,10 @@ func (c Channel) String() string {
 	return string(c)
 }
 
+func ListChannels() []Channel {
+	return []Channel{Telegram, Email}
+}
+
 func (c Channel) IsValid() bool {
 	switch c {
 	case Telegram, Email:
@@ -18,8 +22,4 @@ func (c Channel) IsValid() bool {
 	default:
 		return false
 	}
-}
-
-func ListChannels() []Channel {
-	return []Channel{Telegram, Email}
 }

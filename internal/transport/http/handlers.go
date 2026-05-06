@@ -1,153 +1,211 @@
-// nolint: revive,staticcheck
-package httpt
+// nolint:revive,staticcheck
+package handler
 
 import (
 	"fmt"
 	"net/http"
 	"time"
 
-	"delayednotifier/internal/entity"
 	"delayednotifier/internal/service"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
 
-// @Summary Создать уведомление
-// @Description Планирует отправку уведомления на указанное время
-// @Tags Notification
+// @Summary Register a new user
+// @Description Registers a user to receive notifications via Email or Telegram
+// @Tags Users
 // @Accept json
 // @Produce json
-// @Param request body CreateNotificationRequest true "Данные уведомления"
-// @Success 201 {object} CreateNotificationResponse "Уведомление создано"
-// @Failure 400 {object} ErrorResponse "Ошибка валидации"
-// @Failure 500 {object} ErrorResponse "Внутренняя ошибка"
+// @Param request body RegisterUserRequest true "User registration data"
+// @Success 201 {object} UserRegisteredResponse "User registered successfully"
+// @Failure 400 {object} ErrorResponse "Invalid input data"
+// @Failure 409 {object} ErrorResponse "Email already exists"
+// @Router /users [post]
+func (h *NotifyHandler) RegisterUser(c *gin.Context) {
+	const op = "transport.handler.RegisterUser"
+	ctx := c.Request.Context()
+
+	var req RegisterUserRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		h.respondError(c, http.StatusBadRequest, "invalid_input", "Validation failed", err)
+		return
+	}
+
+	serviceReq := service.RegisterUserRequest{
+		Name:  req.Name,
+		Email: req.Email,
+	}
+
+	user, err := h.svc.RegisterUser(ctx, serviceReq)
+	if err != nil {
+		h.handleServiceError(c, err)
+		return
+	}
+
+	response := UserRegisteredResponse{
+		UserID:  user.ID,
+		Message: msgRegisteredViaEmail,
+	}
+
+	h.respondJSON(c, http.StatusCreated, response)
+}
+
+// @Summary Generate Telegram Link Token
+// @Description Generates a one-time token to link the user's account with Telegram bot
+// @Tags Users
+// @Accept json
+// @Produce json
+// @Param user_id path string true "User UUID"
+// @Success 200 {object} LinkTokenResponse "Link token and instruction"
+// @Failure 404 {object} ErrorResponse "User not found"
+// @Router /users/{user_id}/link-token [post]
+func (h *NotifyHandler) GenerateLinkToken(c *gin.Context) {
+	const op = "transport.handler.GenerateLinkToken"
+
+	userIDStr := c.Param("user_id")
+	userID, err := uuid.Parse(userIDStr)
+	if err != nil {
+		h.respondError(c, http.StatusBadRequest, "invalid_id", "Invalid User ID", err)
+		return
+	}
+
+	token, err := h.svc.GenerateLinkToken(c.Request.Context(), userID)
+	if err != nil {
+		h.handleServiceError(c, err)
+		return
+	}
+
+	linkURL := fmt.Sprintf("https://t.me/%s?start=%s", h.botCfg.Alias, token)
+
+	response := LinkTokenResponse{
+		Token:     token,
+		Link:      linkURL,
+		Message:   msgLinkTokenGenerated,
+		ExpiresIn: linkTokenExpiration,
+	}
+
+	h.respondJSON(c, http.StatusOK, response)
+}
+
+// @Summary Create a scheduled notification
+// @Description Schedules a notification to be sent to a specific user at a given time
+// @Tags Notifications
+// @Accept json
+// @Produce json
+// @Param request body CreateNotificationRequest true "Notification details"
+// @Success 201 {object} NotificationCreatedResponse "Notification created"
+// @Failure 400 {object} ErrorResponse "Invalid input data"
+// @Failure 500 {object} ErrorResponse "Internal server error"
 // @Router /notify [post]
 func (h *NotifyHandler) CreateNotification(c *gin.Context) {
-	const op = "transport.http.NotifyHandler.CreateNotification"
+	const op = "transport.handler.CreateNotification"
 	ctx := c.Request.Context()
 
 	var req CreateNotificationRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		h.respondError(c, http.StatusBadRequest, "invalid_request", "Invalid JSON format", err)
+		h.respondError(c, http.StatusBadRequest, "invalid_input", "Validation failed", err)
 		return
 	}
 
-	channel := entity.Channel(req.Channel)
-	if !channel.IsValid() {
-		h.respondError(c, http.StatusBadRequest, "invalid_channel",
-			"Channel must be one of: telegram, email", nil)
-		return
-	}
-
-	if req.ScheduledAt.IsZero() {
-		h.respondError(c, http.StatusBadRequest, "invalid_scheduled_at", "Scheduled time is required", nil)
+	if req.ScheduledAt.Before(time.Now().UTC()) {
+		h.respondError(c, http.StatusBadRequest, "invalid_time", "Scheduled time must be in the future", nil)
 		return
 	}
 
 	serviceReq := service.CreateNotificationRequest{
-		Channel:     channel,
+		UserID:      req.UserID,
+		Channel:     req.Channel,
 		Payload:     req.Payload,
-		Recipient:   req.Recipient,
-		ScheduledAt: req.ScheduledAt.UTC(),
+		ScheduledAt: req.ScheduledAt,
 	}
 
-	notificationID, err := h.svc.Create(ctx, serviceReq)
+	id, err := h.svc.CreateNotify(ctx, serviceReq)
 	if err != nil {
-		h.handleServiceError(c, op, err)
+		h.handleServiceError(c, err)
 		return
 	}
 
-	response := CreateNotificationResponse{
-		ID:          notificationID,
-		Channel:     req.Channel,
-		Recipient:   req.Recipient,
-		Payload:     req.Payload,
-		ScheduledAt: req.ScheduledAt,
-		Message:     "Notification created successfully",
+	c.Header("Location", fmt.Sprintf("/notify/%s", id.String()))
+
+	response := NotificationCreatedResponse{
+		ID:      id,
+		Message: msgNotificationCreated,
 	}
 
-	c.Header("Location", fmt.Sprintf("/notify/%s", notificationID))
 	h.respondJSON(c, http.StatusCreated, response)
 }
 
-// @Summary Получить статус уведомления
-// @Description Возвращает статус уведомления по уникальному идентификатору
-// @Tags Notification
+// @Summary Get notification status
+// @Description Returns the current status of a notification by its ID
+// @Tags Notifications
 // @Accept json
 // @Produce json
-// @Param id path string true "Уникальный идентификатор уведомления"
-// @Success 200 {object} NotificationStatusResponse "Успешный ответ с статусом уведомления"
-// @Failure 400 {object} ErrorResponse "Неверный формат notify_id"
-// @Failure 404 {object} ErrorResponse "Уведомление не найдено"
-// @Failure 500 {object} ErrorResponse "Внутренняя ошибка сервера"
+// @Param id path string true "Notification UUID"
+// @Success 200 {object} entity.Notification "Notification details"
+// @Failure 400 {object} ErrorResponse "Invalid ID format"
+// @Failure 404 {object} ErrorResponse "Notification not found"
 // @Router /notify/{id} [get]
 func (h *NotifyHandler) GetStatus(c *gin.Context) {
-	const op = "transport.http.NotifyHandler.GetStatus"
+	const op = "transport.handler.GetStatus"
 	ctx := c.Request.Context()
 
 	idStr := c.Param("id")
 	id, err := uuid.Parse(idStr)
 	if err != nil {
-		h.respondError(c, http.StatusBadRequest, "invalid_id", "Invalid notification ID format", err)
+		h.respondError(c, http.StatusBadRequest, "invalid_id", "Invalid UUID format", err)
 		return
 	}
 
 	notification, err := h.svc.GetStatus(ctx, id)
 	if err != nil {
-		h.handleServiceError(c, op, err)
+		h.handleServiceError(c, err)
 		return
 	}
 
-	response := NotificationStatusResponse{
-		ID:          notification.ID.String(),
-		Channel:     string(notification.Channel),
-		Status:      notification.Status.String(),
-		Payload:     notification.Payload,
-		ScheduledAt: notification.ScheduledAt,
-		SentAt:      notification.SentAt,
-		RetryCount:  notification.RetryCount,
-		LastError:   notification.LastError,
-		CreatedAt:   notification.CreatedAt,
-	}
-
-	h.respondJSON(c, http.StatusOK, response)
+	h.respondJSON(c, http.StatusOK, notification)
 }
 
-// @Summary Отменить уведомление
-// @Description Отменяет запланированное уведомление
-// @Tags Notification
+// @Summary Cancel a notification
+// @Description Cancels a scheduled notification if it hasn't been sent yet
+// @Tags Notifications
 // @Accept json
 // @Produce json
-// @Param id path string true "Уникальный идентификатор уведомления"
-// @Success 200 {object} SuccessResponse "Успешный ответ"
-// @Failure 400 {object} ErrorResponse "Неверный формат notify_id"
-// @Failure 404 {object} ErrorResponse "Уведомление не найдено"
-// @Failure 409 {object} ErrorResponse "Уведомление уже отправлено или отменено"
-// @Failure 500 {object} ErrorResponse "Внутренняя ошибка сервера"
+// @Param id path string true "Notification UUID"
+// @Success 200 {object} SuccessResponse "Cancellation successful"
+// @Failure 400 {object} ErrorResponse "Invalid ID format"
+// @Failure 404 {object} ErrorResponse "Notification not found"
+// @Failure 409 {object} ErrorResponse "Notification already sent or cancelled"
 // @Router /notify/{id} [delete]
-func (h *NotifyHandler) Cancel(c *gin.Context) {
-	const op = "transport.http.NotifyHandler.Cancel"
+func (h *NotifyHandler) CancelNotification(c *gin.Context) {
+	const op = "transport.handler.CancelNotification"
 	ctx := c.Request.Context()
 
 	idStr := c.Param("id")
 	id, err := uuid.Parse(idStr)
 	if err != nil {
-		h.respondError(c, http.StatusBadRequest, "invalid_id", "Invalid notification ID format", err)
+		h.respondError(c, http.StatusBadRequest, "invalid_id", "Invalid UUID format", err)
 		return
 	}
 
-	if cancelErr := h.svc.Cancel(ctx, id); cancelErr != nil {
-		h.handleServiceError(c, op, cancelErr)
+	if err = h.svc.Cancel(ctx, id); err != nil {
+		h.handleServiceError(c, err)
 		return
 	}
 
 	response := SuccessResponse{
-		Message: "Notification cancelled successfully",
+		Message: msgNotificationCancelled,
 	}
+
 	h.respondJSON(c, http.StatusOK, response)
 }
 
+// @Summary Health check endpoint
+// @Description Return service status and current timestamp. No authentication required.
+// @Tags System
+// @Produce json
+// @Success 200 {object} map[string]string "Service is healthy"
+// @Router /health [get]
 func (h *NotifyHandler) Health(c *gin.Context) {
 	response := map[string]string{
 		"status": "ok",

@@ -2,18 +2,11 @@ package service
 
 import (
 	"errors"
+	"fmt"
 	"time"
 )
 
 type Option func(*NotifyService)
-
-func QueryLimit(limit uint64) Option {
-	return func(s *NotifyService) {
-		if limit > 0 {
-			s.queryLimit = limit
-		}
-	}
-}
 
 func MaxRetries(retries int) Option {
 	return func(s *NotifyService) {
@@ -31,15 +24,26 @@ func RetryDelay(delay time.Duration) Option {
 	}
 }
 
+func QueryLimit(limit uint64) Option {
+	return func(s *NotifyService) {
+		if limit > 0 {
+			s.queryLimit = limit
+		}
+	}
+}
+
 func (s *NotifyService) validate() error {
+	if s.sender == nil {
+		return errors.New("sender is required")
+	}
 	if s.maxRetries <= 0 {
-		return errors.New("invalid max retries: must be > 0")
+		return fmt.Errorf("maxRetries must be > 0, got %d", s.maxRetries)
 	}
 	if s.retryDelay <= 0 {
-		return errors.New("invalid base retry delay: must be > 0")
+		return fmt.Errorf("retryDelay must be > 0, got %v", s.retryDelay)
 	}
-	if s.sender == nil {
-		return errors.New("invalid sender: must be non-nil")
+	if s.queryLimit <= 0 {
+		return fmt.Errorf("queryLimit must be > 0, got %d", s.queryLimit)
 	}
 	return nil
 }

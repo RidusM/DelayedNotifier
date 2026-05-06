@@ -1,52 +1,65 @@
-// nolint: revive,staticcheck
 // swagger:meta
-package httpt
+// nolint:revive,staticcheck
+package handler
 
 import (
 	"time"
 
+	"delayednotifier/internal/entity"
+
 	"github.com/google/uuid"
 )
 
+const (
+	msgRegisteredViaEmail    = "Registered via Email"
+	msgLinkTokenGenerated    = "Click the link in Telegram to link your account"
+	msgNotificationCreated   = "Notification scheduled successfully"
+	msgNotificationCancelled = "Notification cancelled"
+	linkTokenExpiration      = "1 hour"
+)
+
+// swagger:model RegisterUserRequest
+type RegisterUserRequest struct {
+	Name  string `json:"name"  binding:"required,min=1,max=100"`
+	Email string `json:"email" binding:"required,email"`
+}
+
 // swagger:model CreateNotificationRequest
 type CreateNotificationRequest struct {
-	Channel     string    `json:"channel"      example:"email"`
-	Recipient   string    `json:"recipient"    example:"user@example.com"`
-	Payload     string    `json:"payload"      example:"Your order #123 is ready!"`
-	ScheduledAt time.Time `json:"scheduled_at" example:"2023-10-27T10:00:00Z"`
+	UserID      uuid.UUID      `json:"user_id"      binding:"required,uuid"`
+	Channel     entity.Channel `json:"channel"      binding:"required,oneof=telegram email"`
+	Payload     string         `json:"payload"      binding:"required,max=100000"`
+	ScheduledAt time.Time      `json:"scheduled_at" binding:"required"`
 }
 
-// swagger:model CreateNotificationResponse
-type CreateNotificationResponse struct {
-	ID          uuid.UUID `json:"id"           example:"550e8400-e29b-41d4-a716-446655440001"`
-	Channel     string    `json:"channel"      example:"email"`
-	Recipient   string    `json:"recipient"    example:"user@example.com"`
-	Payload     string    `json:"payload"      example:"Your order #123 is ready!"`
-	ScheduledAt time.Time `json:"scheduled_at" example:"2023-10-27T10:00:00Z"`
-	Message     string    `json:"message"      example:"Notification created successfully"`
+// swagger:model LinkTokenResponse
+type LinkTokenResponse struct {
+	Token     string `json:"token"      binding:"required"`
+	Link      string `json:"link"       binding:"required"`
+	Message   string `json:"message"`
+	ExpiresIn string `json:"expires_in" binding:"required"`
 }
 
-// swagger:model NotificationStatusResponse
-type NotificationStatusResponse struct {
-	ID          string     `json:"id"                   example:"550e8400-e29b-41d4-a716-446655440001"`
-	Channel     string     `json:"channel"              example:"EMAIL"`
-	Status      string     `json:"status"               example:"waiting"`
-	Payload     string     `json:"payload"              example:"Your order #123 is ready!"`
-	ScheduledAt time.Time  `json:"scheduled_at"         example:"2023-10-27T10:00:00Z"`
-	SentAt      *time.Time `json:"sent_at,omitempty"    example:"2023-10-27T10:00:05Z"`
-	RetryCount  int        `json:"retry_count"          example:"1"`
-	LastError   *string    `json:"last_error,omitempty" example:"connection timeout"`
-	CreatedAt   time.Time  `json:"created_at"           example:"2023-10-26T10:00:00Z"`
+// swagger:model NotificationCreatedResponse
+type NotificationCreatedResponse struct {
+	ID      uuid.UUID `json:"id"      binding:"required,uuid"`
+	Message string    `json:"message"`
+}
+
+// swagger:model UserRegisteredResponse
+type UserRegisteredResponse struct {
+	UserID  uuid.UUID `json:"user_id" binding:"required,uuid"`
+	Message string    `json:"message"`
 }
 
 // swagger:model ErrorResponse
 type ErrorResponse struct {
-	Error   string `json:"error"             example:"notification not found"`
+	Error   string `json:"error"             example:"notify not found"`
 	Code    string `json:"code,omitempty"    example:"not_found"`
-	Details string `json:"details,omitempty" example:"notification with id 123 does not exist"`
+	Details string `json:"details,omitempty" example:"notify with id 123 does not exist"`
 }
 
 // swagger:model SuccessResponse
 type SuccessResponse struct {
-	Message string `json:"message" example:"Notification cancelled successfully"`
+	Message string `json:"message" example:"Operation completed successfully"`
 }

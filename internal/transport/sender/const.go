@@ -2,4 +2,6 @@ package sender
 
 import "time"
 
-const _defaultTimeout = 30 * time.Second
+const (
+	_defaultTimeout = 30 * time.Second
+)

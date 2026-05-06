@@ -1,14 +1,8 @@
 package config
 
 import (
-	"errors"
-	"fmt"
 	"time"
-
-	"github.com/go-playground/validator/v10"
 )
-
-const _maxQueryLimit = 100
 
 type (
 	Config struct {
@@ -80,6 +74,7 @@ type (
 	}
 
 	TG struct {
+		Alias string `env:"ALIAS"`
 		Token string `env:"TOKEN"`
 	}
 
@@ -102,21 +97,3 @@ type (
 		MaxAge     int    `env:"MAX_AGE"     env-default:"28"                          validate:"min=1,max=365"`
 	}
 )
-
-func (c *Config) Validate() error {
-	validate := validator.New()
-
-	if err := validate.Struct(c); err != nil {
-		return fmt.Errorf("config validation failed: %w", err)
-	}
-
-	if c.TG.Token != "" && len(c.TG.Token) < 45 {
-		return errors.New("TG_TOKEN: invalid token length")
-	}
-
-	if c.Service.QueryLimit > _maxQueryLimit {
-		return errors.New("SERVICE_QUERY_LIMIT: cannot exceed 100")
-	}
-
-	return nil
-}

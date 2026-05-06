@@ -1,940 +1,1010 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="ru">
 <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>DelayedNotifier</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
-    <style>
-        :root {
-            --bg:        #0d0f12;
-            --surface:   #141720;
-            --border:    #232736;
-            --border2:   #2e3347;
-            --text:      #dde1f0;
-            --muted:     #6b7294;
-            --accent:    #4f8fff;
-            --accent2:   #6c63ff;
-            --green:     #3dd68c;
-            --red:       #f0544f;
-            --yellow:    #f4c430;
-            --orange:    #ff8c42;
-            --mono:      'IBM Plex Mono', monospace;
-            --sans:      'IBM Plex Sans', sans-serif;
-        }
-
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-
-        body {
-            font-family: var(--sans);
-            background: var(--bg);
-            color: var(--text);
-            min-height: 100vh;
-            display: flex;
-            flex-direction: column;
-        }
-
-        /* ── TOP BAR ── */
-        .topbar {
-            border-bottom: 1px solid var(--border);
-            padding: 0 32px;
-            height: 56px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            background: var(--surface);
-            position: sticky;
-            top: 0;
-            z-index: 100;
-        }
-
-        .logo {
-            font-family: var(--mono);
-            font-size: 15px;
-            font-weight: 600;
-            letter-spacing: 0.05em;
-            color: var(--text);
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-
-        .logo-dot {
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            background: var(--green);
-            box-shadow: 0 0 8px var(--green);
-            animation: pulse 2s infinite;
-        }
-
-        @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50%       { opacity: 0.4; }
-        }
-
-        .topbar-right {
-            font-family: var(--mono);
-            font-size: 12px;
-            color: var(--muted);
-        }
-
-        /* ── LAYOUT ── */
-        .main {
-            flex: 1;
-            display: grid;
-            grid-template-columns: 380px 1fr;
-            gap: 0;
-            max-height: calc(100vh - 56px);
-            overflow: hidden;
-        }
-
-        /* ── SIDEBAR (FORM) ── */
-        .sidebar {
-            border-right: 1px solid var(--border);
-            padding: 28px 24px;
-            overflow-y: auto;
-            display: flex;
-            flex-direction: column;
-            gap: 20px;
-        }
-
-        .section-label {
-            font-family: var(--mono);
-            font-size: 10px;
-            font-weight: 600;
-            letter-spacing: 0.12em;
-            text-transform: uppercase;
-            color: var(--muted);
-            margin-bottom: 14px;
-        }
-
-        /* ── FORM ── */
-        .form-group { margin-bottom: 14px; }
-
-        .form-group label {
-            display: block;
-            font-size: 12px;
-            font-weight: 500;
-            color: var(--muted);
-            margin-bottom: 6px;
-            font-family: var(--mono);
-            letter-spacing: 0.04em;
-            text-transform: uppercase;
-        }
-
-        .form-group label .req { color: var(--red); }
-
-        .form-group input,
-        .form-group select,
-        .form-group textarea {
-            width: 100%;
-            padding: 10px 12px;
-            background: var(--bg);
-            border: 1px solid var(--border2);
-            border-radius: 6px;
-            font-size: 14px;
-            font-family: var(--sans);
-            color: var(--text);
-            transition: border-color 0.15s;
-        }
-
-        .form-group select option { background: var(--surface); }
-
-        .form-group input:focus,
-        .form-group select:focus,
-        .form-group textarea:focus {
-            outline: none;
-            border-color: var(--accent);
-            box-shadow: 0 0 0 3px rgba(79,143,255,0.12);
-        }
-
-        .form-group textarea { resize: vertical; min-height: 80px; }
-
-        .hint {
-            font-size: 11px;
-            color: var(--muted);
-            margin-top: 5px;
-            font-family: var(--mono);
-        }
-
-        .hint.warn { color: var(--yellow); }
-
-        /* ── SUBMIT BUTTON ── */
-        .btn-submit {
-            width: 100%;
-            padding: 12px;
-            background: var(--accent);
-            color: #fff;
-            border: none;
-            border-radius: 6px;
-            font-size: 14px;
-            font-weight: 600;
-            font-family: var(--sans);
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
-            transition: background 0.15s, transform 0.1s;
-        }
-
-        .btn-submit:hover:not(:disabled) { background: #3a7aee; transform: translateY(-1px); }
-        .btn-submit:disabled { opacity: 0.45; cursor: not-allowed; }
-
-        .spinner {
-            width: 14px; height: 14px;
-            border: 2px solid rgba(255,255,255,0.3);
-            border-top-color: #fff;
-            border-radius: 50%;
-            animation: spin 0.7s linear infinite;
-        }
-
-        @keyframes spin { to { transform: rotate(360deg); } }
-
-        /* ── ALERT ── */
-        .alert {
-            padding: 10px 14px;
-            border-radius: 6px;
-            font-size: 13px;
-            display: none;
-            border-left: 3px solid transparent;
-            font-family: var(--mono);
-        }
-
-        .alert.show { display: block; animation: fadeSlide 0.2s ease; }
-
-        @keyframes fadeSlide {
-            from { opacity: 0; transform: translateY(-6px); }
-            to   { opacity: 1; transform: translateY(0); }
-        }
-
-        .alert-success { background: rgba(61,214,140,0.1); border-color: var(--green); color: var(--green); }
-        .alert-error   { background: rgba(240,84,79,0.1);  border-color: var(--red);   color: var(--red); }
-
-        /* ── RIGHT PANEL ── */
-        .panel {
-            display: flex;
-            flex-direction: column;
-            overflow: hidden;
-        }
-
-        /* ── STATS BAR ── */
-        .stats-bar {
-            border-bottom: 1px solid var(--border);
-            display: flex;
-            align-items: stretch;
-        }
-
-        .stat-item {
-            flex: 1;
-            padding: 14px 20px;
-            border-right: 1px solid var(--border);
-            display: flex;
-            flex-direction: column;
-            gap: 2px;
-        }
-
-        .stat-item:last-child { border-right: none; }
-
-        .stat-value {
-            font-family: var(--mono);
-            font-size: 24px;
-            font-weight: 600;
-            color: var(--text);
-            transition: color 0.3s;
-        }
-
-        .stat-label {
-            font-family: var(--mono);
-            font-size: 10px;
-            font-weight: 500;
-            letter-spacing: 0.08em;
-            text-transform: uppercase;
-            color: var(--muted);
-        }
-
-        .stat-item.s-waiting  .stat-value { color: var(--yellow); }
-        .stat-item.s-sent     .stat-value { color: var(--green); }
-        .stat-item.s-failed   .stat-value { color: var(--red); }
-        .stat-item.s-cancelled .stat-value { color: var(--muted); }
-
-        /* ── TOOLBAR ── */
-        .toolbar {
-            padding: 12px 24px;
-            border-bottom: 1px solid var(--border);
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .filter-btn {
-            padding: 5px 12px;
-            border: 1px solid var(--border2);
-            background: transparent;
-            color: var(--muted);
-            border-radius: 4px;
-            font-size: 12px;
-            font-family: var(--mono);
-            cursor: pointer;
-            transition: all 0.15s;
-        }
-
-        .filter-btn:hover { border-color: var(--accent); color: var(--accent); }
-
-        .filter-btn.active {
-            border-color: var(--accent);
-            background: rgba(79,143,255,0.12);
-            color: var(--accent);
-        }
-
-        .toolbar-spacer { flex: 1; }
-
-        .refresh-btn {
-            padding: 5px 12px;
-            border: 1px solid var(--border2);
-            background: transparent;
-            color: var(--muted);
-            border-radius: 4px;
-            font-size: 12px;
-            font-family: var(--mono);
-            cursor: pointer;
-            transition: all 0.15s;
-            display: flex;
-            align-items: center;
-            gap: 6px;
-        }
-
-        .refresh-btn:hover { border-color: var(--accent); color: var(--accent); }
-        .refresh-btn.spinning svg { animation: spin 0.8s linear infinite; }
-
-        /* ── LIST ── */
-        .list-wrap {
-            flex: 1;
-            overflow-y: auto;
-            padding: 16px 24px;
-        }
-
-        .list-wrap::-webkit-scrollbar { width: 6px; }
-        .list-wrap::-webkit-scrollbar-track { background: transparent; }
-        .list-wrap::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
-
-        /* ── NOTIFICATION CARD ── */
-        .ncard {
-            background: var(--surface);
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            padding: 16px;
-            margin-bottom: 10px;
-            transition: border-color 0.15s;
-            animation: fadeSlide 0.25s ease;
-        }
-
-        .ncard:hover { border-color: var(--border2); }
-
-        .ncard-top {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            margin-bottom: 12px;
-        }
-
-        .ncard-id {
-            font-family: var(--mono);
-            font-size: 11px;
-            color: var(--muted);
-            flex: 1;
-            min-width: 0;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-        }
-
-        /* STATUS BADGES */
-        .badge {
-            font-family: var(--mono);
-            font-size: 10px;
-            font-weight: 600;
-            letter-spacing: 0.08em;
-            text-transform: uppercase;
-            padding: 3px 9px;
-            border-radius: 3px;
-            white-space: nowrap;
-            flex-shrink: 0;
-        }
-
-        .badge-waiting    { background: rgba(244,196,48,0.15);  color: var(--yellow); border: 1px solid rgba(244,196,48,0.3); }
-        .badge-in_process { background: rgba(79,143,255,0.15);  color: var(--accent); border: 1px solid rgba(79,143,255,0.3); animation: blink 1.5s infinite; }
-        .badge-sent       { background: rgba(61,214,140,0.12);  color: var(--green);  border: 1px solid rgba(61,214,140,0.3); }
-        .badge-failed     { background: rgba(240,84,79,0.12);   color: var(--red);    border: 1px solid rgba(240,84,79,0.3); }
-        .badge-cancelled  { background: rgba(107,114,148,0.12); color: var(--muted);  border: 1px solid rgba(107,114,148,0.3); }
-
-        @keyframes blink {
-            0%, 100% { opacity: 1; }
-            50%       { opacity: 0.55; }
-        }
-
-        .ncard-body { margin-bottom: 10px; }
-
-        .ncard-recipient {
-            font-size: 14px;
-            font-weight: 500;
-            margin-bottom: 4px;
-            display: flex;
-            align-items: center;
-            gap: 6px;
-        }
-
-        .channel-tag {
-            font-family: var(--mono);
-            font-size: 10px;
-            font-weight: 600;
-            letter-spacing: 0.06em;
-            text-transform: uppercase;
-            padding: 2px 7px;
-            border-radius: 3px;
-            background: rgba(108,99,255,0.15);
-            color: var(--accent2);
-            border: 1px solid rgba(108,99,255,0.25);
-        }
-
-        .ncard-payload {
-            font-size: 13px;
-            color: var(--muted);
-            word-break: break-word;
-        }
-
-        .ncard-meta {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 14px;
-            margin-bottom: 10px;
-        }
-
-        .meta-item {
-            font-family: var(--mono);
-            font-size: 11px;
-            color: var(--muted);
-            display: flex;
-            align-items: center;
-            gap: 4px;
-        }
-
-        .meta-item svg { opacity: 0.5; }
-
-        .error-box {
-            margin-top: 8px;
-            padding: 8px 10px;
-            background: rgba(240,84,79,0.08);
-            border: 1px solid rgba(240,84,79,0.2);
-            border-radius: 4px;
-            font-family: var(--mono);
-            font-size: 11px;
-            color: var(--red);
-            word-break: break-word;
-        }
-
-        .ncard-actions {
-            display: flex;
-            gap: 8px;
-            margin-top: 10px;
-            padding-top: 10px;
-            border-top: 1px solid var(--border);
-        }
-
-        .btn-action {
-            padding: 5px 12px;
-            border-radius: 4px;
-            font-size: 12px;
-            font-family: var(--mono);
-            font-weight: 500;
-            cursor: pointer;
-            border: 1px solid;
-            background: transparent;
-            transition: all 0.15s;
-        }
-
-        .btn-cancel {
-            border-color: rgba(240,84,79,0.4);
-            color: var(--red);
-        }
-
-        .btn-cancel:hover { background: rgba(240,84,79,0.1); border-color: var(--red); }
-
-        .btn-refresh {
-            border-color: var(--border2);
-            color: var(--muted);
-        }
-
-        .btn-refresh:hover { border-color: var(--accent); color: var(--accent); }
-
-        /* ── EMPTY STATE ── */
-        .empty {
-            text-align: center;
-            padding: 80px 24px;
-            color: var(--muted);
-        }
-
-        .empty-icon {
-            width: 48px; height: 48px;
-            opacity: 0.2;
-            margin: 0 auto 16px;
-        }
-
-        .empty p { font-family: var(--mono); font-size: 13px; }
-        .empty p + p { font-size: 11px; margin-top: 6px; opacity: 0.6; }
-
-        /* ── RESPONSIVE ── */
-        @media (max-width: 900px) {
-            .main { grid-template-columns: 1fr; grid-template-rows: auto 1fr; max-height: none; overflow: visible; }
-            .sidebar { border-right: none; border-bottom: 1px solid var(--border); }
-            .panel { height: 60vh; }
-        }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Отложенные уведомления</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800&family=Nunito+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #111318;
+    --surface: #1c1f27;
+    --surface2: #161920;
+    --border: #2a2e3a;
+    --text: #e8eaf0;
+    --muted: #7a8099;
+    --hint: #4e5568;
+    --accent: #4ade80;
+    --accent-light: #14271e;
+    --accent-text: #4ade80;
+    --danger: #f87171;
+    --danger-light: #261616;
+    --danger-text: #f87171;
+    --warn-light: #231e0e;
+    --warn-text: #f5c542;
+    --info-light: #0f1e35;
+    --info-text: #60a5fa;
+    --shadow: 0 2px 12px rgba(0,0,0,0.35);
+    --shadow-md: 0 4px 24px rgba(0,0,0,0.5);
+    --r: 16px;
+    --r-sm: 10px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Nunito Sans', sans-serif;
+    font-size: 15px;
+    line-height: 1.6;
+    min-height: 100vh;
+  }
+
+  /* ── Top bar ── */
+  .topbar {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 0 32px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    height: 60px;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    box-shadow: 0 1px 6px rgba(0,0,0,0.4);
+  }
+
+  .logo {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-family: 'Nunito', sans-serif;
+    font-weight: 800;
+    font-size: 18px;
+    color: var(--text);
+    text-decoration: none;
+  }
+
+  .logo-icon {
+    width: 34px;
+    height: 34px;
+    background: #166534;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    flex-shrink: 0;
+  }
+
+  .topbar-right {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .health-pill {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 12px;
+    border-radius: 20px;
+    font-size: 13px;
+    font-weight: 600;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    cursor: pointer;
+    transition: all 0.15s;
+    color: var(--muted);
+  }
+
+  .health-pill:hover { border-color: var(--accent); color: var(--accent); }
+  .health-pill.ok { background: var(--accent-light); border-color: #1e4030; color: var(--accent-text); }
+  .health-pill.err { background: var(--danger-light); border-color: #3d1a1a; color: var(--danger-text); }
+
+  .dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: currentColor;
+    flex-shrink: 0;
+  }
+
+  .dot.pulse { animation: pulse 2s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+  /* ── Layout ── */
+  .layout {
+    display: grid;
+    grid-template-columns: 240px 1fr;
+    min-height: calc(100vh - 60px);
+    max-width: 1100px;
+    margin: 0 auto;
+  }
+
+  /* ── Sidebar ── */
+  .sidebar {
+    padding: 28px 0;
+    position: sticky;
+    top: 60px;
+    height: calc(100vh - 60px);
+    overflow-y: auto;
+  }
+
+  .sidebar-label {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--hint);
+    padding: 0 20px 8px;
+    margin-top: 20px;
+  }
+
+  .sidebar-label:first-child { margin-top: 0; }
+
+  .nav-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 20px;
+    border-radius: var(--r-sm);
+    margin: 2px 8px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--muted);
+    transition: all 0.15s;
+    border: none;
+    background: none;
+    width: calc(100% - 16px);
+    text-align: left;
+  }
+
+  .nav-item:hover { background: #22263200; color: var(--text); background: rgba(255,255,255,0.04); }
+
+  .nav-item.active {
+    background: var(--accent-light);
+    color: var(--accent-text);
+  }
+
+  .nav-icon {
+    font-size: 20px;
+    width: 24px;
+    text-align: center;
+    flex-shrink: 0;
+  }
+
+  .step-num {
+    width: 20px; height: 20px;
+    border-radius: 50%;
+    background: var(--border);
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    margin-left: auto;
+  }
+
+  .nav-item.active .step-num {
+    background: #166534;
+    color: #bbf7d0;
+  }
+
+  /* ── Main ── */
+  .main {
+    padding: 32px 40px 60px;
+    max-width: 680px;
+  }
+
+  .section { display: none; }
+  .section.active { display: block; animation: slideIn 0.25s ease; }
+
+  @keyframes slideIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  /* ── Page header ── */
+  .page-hd {
+    margin-bottom: 28px;
+  }
+
+  .page-hd h1 {
+    font-family: 'Nunito', sans-serif;
+    font-size: 26px;
+    font-weight: 800;
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .page-hd p {
+    color: var(--muted);
+    font-size: 15px;
+  }
+
+  /* ── Card ── */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--r);
+    padding: 24px;
+    margin-bottom: 16px;
+    box-shadow: var(--shadow);
+  }
+
+  /* ── Fields ── */
+  .field { margin-bottom: 18px; }
+  .field:last-of-type { margin-bottom: 0; }
+
+  .field label {
+    display: block;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 6px;
+  }
+
+  .field-hint {
+    font-size: 12px;
+    color: var(--hint);
+    margin-top: 5px;
+    display: flex;
+    align-items: flex-start;
+    gap: 4px;
+  }
+
+  input, textarea, select {
+    width: 100%;
+    background: var(--surface2);
+    border: 1.5px solid var(--border);
+    border-radius: var(--r-sm);
+    padding: 11px 14px;
+    font-family: 'Nunito Sans', sans-serif;
+    font-size: 15px;
+    color: var(--text);
+    outline: none;
+    transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+    appearance: none;
+  }
+
+  input:focus, textarea:focus, select:focus {
+    border-color: var(--accent);
+    background: #1a2820;
+    box-shadow: 0 0 0 3px rgba(74,222,128,0.1);
+  }
+
+  textarea { resize: vertical; min-height: 110px; line-height: 1.6; }
+
+  .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+
+  /* ── Channel picker ── */
+  .channel-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 4px; }
+
+  .channel-card {
+    border: 2px solid var(--border);
+    border-radius: var(--r-sm);
+    padding: 16px;
+    cursor: pointer;
+    transition: all 0.15s;
+    text-align: center;
+    background: var(--surface2);
+    user-select: none;
+  }
+
+  .channel-card:hover { border-color: var(--accent); background: var(--accent-light); }
+  .channel-card.selected { border-color: var(--accent); background: var(--accent-light); }
+
+  .channel-card .ch-icon { font-size: 28px; margin-bottom: 6px; }
+  .channel-card .ch-name { font-weight: 700; font-size: 14px; color: var(--text); }
+  .channel-card .ch-desc { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+  /* ── Banners ── */
+  .banner {
+    border-radius: var(--r-sm);
+    padding: 12px 16px;
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    font-size: 14px;
+    margin-bottom: 18px;
+    line-height: 1.5;
+  }
+
+  .banner-icon { font-size: 18px; flex-shrink: 0; margin-top: 1px; }
+  .banner.info { background: var(--info-light); color: var(--info-text); }
+  .banner.warn { background: var(--warn-light); color: var(--warn-text); border: 1px solid #f0d875; }
+  .banner.danger { background: var(--danger-light); color: var(--danger-text); border: 1px solid #f0b9b5; }
+
+  /* ── Buttons ── */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 12px 24px;
+    border-radius: var(--r-sm);
+    font-family: 'Nunito', sans-serif;
+    font-size: 15px;
+    font-weight: 800;
+    cursor: pointer;
+    border: none;
+    outline: none;
+    transition: all 0.15s;
+    width: 100%;
+    margin-top: 4px;
+  }
+
+  .btn-primary {
+    background: #166534;
+    color: #bbf7d0;
+  }
+
+  .btn-primary:hover { background: #15803d; transform: translateY(-1px); box-shadow: 0 4px 16px rgba(74,222,128,0.2); }
+  .btn-primary:active { transform: translateY(0); box-shadow: none; }
+  .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; transform: none; box-shadow: none; }
+
+  .btn-danger {
+    background: #7f1d1d;
+    color: #fecaca;
+  }
+
+  .btn-danger:hover { background: #991b1b; transform: translateY(-1px); box-shadow: 0 4px 16px rgba(248,113,113,0.2); }
+  .btn-danger:active { transform: translateY(0); box-shadow: none; }
+  .btn-danger:disabled { opacity: 0.4; cursor: not-allowed; transform: none; box-shadow: none; }
+
+  .btn-icon { font-size: 18px; }
+
+  .spinner {
+    width: 16px; height: 16px;
+    border: 2px solid rgba(255,255,255,0.35);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: spin 0.6s linear infinite;
+    display: none;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── Result panel ── */
+  .result { display: none; margin-top: 16px; border-radius: var(--r-sm); overflow: hidden; border: 1px solid var(--border); }
+  .result.show { display: block; animation: slideIn 0.2s; }
+
+  .result-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 16px;
+    font-weight: 700;
+    font-size: 14px;
+  }
+
+  .result-head.ok { background: var(--accent-light); color: var(--accent-text); }
+  .result-head.err { background: var(--danger-light); color: var(--danger-text); }
+  .result-head-icon { font-size: 18px; }
+
+  .result-body { padding: 14px 16px; background: var(--surface2); font-size: 14px; line-height: 1.6; color: var(--muted); }
+  .result-body strong { color: var(--text); }
+
+  /* ── Copy field ── */
+  .copy-row { display: flex; gap: 8px; margin-top: 8px; }
+
+  .copy-val {
+    flex: 1;
+    padding: 9px 12px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--r-sm);
+    font-size: 13px;
+    color: var(--muted);
+    word-break: break-all;
+  }
+
+  .copy-btn {
+    padding: 9px 14px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--r-sm);
+    font-size: 13px;
+    font-family: 'Nunito', sans-serif;
+    font-weight: 700;
+    cursor: pointer;
+    color: var(--muted);
+    transition: all 0.15s;
+    white-space: nowrap;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+
+  .copy-btn:hover { color: var(--accent); border-color: var(--accent); background: var(--accent-light); }
+
+  /* ── Link button ── */
+  .link-open {
+    display: block;
+    width: 100%;
+    margin-top: 8px;
+    padding: 10px 16px;
+    background: #1e3a5f;
+    color: #93c5fd;
+    text-align: center;
+    border-radius: var(--r-sm);
+    font-family: 'Nunito', sans-serif;
+    font-weight: 700;
+    font-size: 14px;
+    text-decoration: none;
+    transition: background 0.15s;
+  }
+
+  .link-open:hover { background: #1e40af; }
+
+  /* ── Status badge ── */
+  .status-badge {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-size: 13px;
+    font-weight: 700;
+  }
+
+  .s-pending { background: var(--warn-light); color: var(--warn-text); }
+  .s-sent    { background: var(--accent-light); color: var(--accent-text); }
+  .s-cancelled { background: #1e2030; color: var(--muted); }
+  .s-failed  { background: var(--danger-light); color: var(--danger-text); }
+
+  /* ── Toast ── */
+  .toast {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%) translateY(60px);
+    background: #e8eaf0;
+    color: #111318;
+    padding: 10px 20px;
+    border-radius: 30px;
+    font-size: 14px;
+    font-weight: 600;
+    font-family: 'Nunito', sans-serif;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    z-index: 999;
+    opacity: 0;
+    transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+    pointer-events: none;
+    box-shadow: var(--shadow-md);
+  }
+
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  /* ── Scrollbar ── */
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+  select {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%237a8099' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 14px center;
+    padding-right: 36px;
+  }
+</style>
 </head>
 <body>
 
-<div class="topbar">
-    <div class="logo">
-        <div class="logo-dot"></div>
-        DELAYED<span style="color:var(--accent)">NOTIFIER</span>
+<!-- Top bar -->
+<header class="topbar">
+  <div class="logo">
+    <div class="logo-icon">⏰</div>
+    Уведомления
+  </div>
+  <div class="topbar-right">
+    <div class="health-pill pulse" id="healthPill" onclick="doHealth()" title="Нажмите, чтобы проверить соединение">
+      <div class="dot pulse" id="healthDot"></div>
+      <span id="healthLabel">проверка…</span>
     </div>
-    <div class="topbar-right" id="tzBadge"></div>
-</div>
+  </div>
+</header>
 
-<div class="main">
+<div class="layout">
 
-    <!-- ── SIDEBAR ── -->
-    <aside class="sidebar">
-        <div>
-            <div class="section-label">Новое уведомление</div>
-            <div id="alert" class="alert"></div>
+  <!-- Sidebar -->
+  <nav class="sidebar">
+    <div class="sidebar-label">Начало работы</div>
+    <button class="nav-item active" onclick="go('register', this)">
+      <span class="nav-icon">👤</span> Регистрация <span class="step-num">1</span>
+    </button>
+    <button class="nav-item" onclick="go('linktoken', this)">
+      <span class="nav-icon">✈️</span> Подключить Telegram <span class="step-num">2</span>
+    </button>
 
-            <div class="form-group">
-                <label for="channel">Канал <span class="req">*</span></label>
-                <select id="channel" required>
-                    <option value="">— выберите —</option>
-                    <option value="email">Email</option>
-                    <option value="telegram">Telegram</option>
-                </select>
-            </div>
+    <div class="sidebar-label">Уведомления</div>
+    <button class="nav-item" onclick="go('create', this)">
+      <span class="nav-icon">✉️</span> Новое уведомление <span class="step-num">3</span>
+    </button>
+    <button class="nav-item" onclick="go('status', this)">
+      <span class="nav-icon">🔍</span> Проверить статус
+    </button>
+    <button class="nav-item" onclick="go('cancel', this)">
+      <span class="nav-icon">🗑️</span> Отменить
+    </button>
+  </nav>
 
-            <div class="form-group">
-                <label for="recipient">Получатель <span class="req">*</span></label>
-                <input type="text" id="recipient" placeholder="user@example.com" required />
-                <div class="hint" id="recipientHint">Выберите канал выше</div>
-            </div>
+  <!-- Main -->
+  <main class="main">
 
-            <div class="form-group">
-                <label for="payload">Сообщение <span class="req">*</span></label>
-                <textarea id="payload" placeholder="Текст уведомления..." required></textarea>
-                <div class="hint">
-                    Для email можно JSON: <code style="font-size:10px;">{"subject":"…","body":"…"}</code>
-                </div>
-            </div>
+    <!-- ── Регистрация ── -->
+    <div class="section active" id="sec-register">
+      <div class="page-hd">
+        <h1>👤 Регистрация</h1>
+        <p>Создайте аккаунт — это займёт несколько секунд</p>
+      </div>
 
-            <div class="form-group">
-                <label for="scheduledAt">Время отправки <span class="req">*</span></label>
-                <input type="datetime-local" id="scheduledAt" required />
-                <div class="hint" id="timeHint"></div>
-            </div>
-
-            <button class="btn-submit" id="submitBtn">
-                <span id="submitText">Создать</span>
-                <div id="submitSpinner" class="spinner" style="display:none"></div>
-            </button>
-        </div>
-    </aside>
-
-    <!-- ── RIGHT PANEL ── -->
-    <div class="panel">
-        <div class="stats-bar">
-            <div class="stat-item">
-                <div class="stat-value" id="statTotal">0</div>
-                <div class="stat-label">Всего</div>
-            </div>
-            <div class="stat-item s-waiting">
-                <div class="stat-value" id="statWaiting">0</div>
-                <div class="stat-label">Ожидают</div>
-            </div>
-            <div class="stat-item s-sent">
-                <div class="stat-value" id="statSent">0</div>
-                <div class="stat-label">Отправлено</div>
-            </div>
-            <div class="stat-item s-failed">
-                <div class="stat-value" id="statFailed">0</div>
-                <div class="stat-label">Ошибки</div>
-            </div>
-            <div class="stat-item s-cancelled">
-                <div class="stat-value" id="statCancelled">0</div>
-                <div class="stat-label">Отменено</div>
-            </div>
+      <div class="card">
+        <div class="field-row">
+          <div class="field">
+            <label>Ваше имя</label>
+            <input id="reg-name" type="text" placeholder="Например: Иван">
+          </div>
+          <div class="field">
+            <label>Email-адрес</label>
+            <input id="reg-email" type="email" placeholder="ivan@example.com">
+          </div>
         </div>
 
-        <div class="toolbar">
-            <button class="filter-btn active" data-filter="all">Все</button>
-            <button class="filter-btn" data-filter="waiting">Ожидают</button>
-            <button class="filter-btn" data-filter="in_process">В процессе</button>
-            <button class="filter-btn" data-filter="sent">Отправлено</button>
-            <button class="filter-btn" data-filter="failed">Ошибки</button>
-            <button class="filter-btn" data-filter="cancelled">Отменено</button>
-            <div class="toolbar-spacer"></div>
-            <button class="refresh-btn" id="refreshAllBtn">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
-                </svg>
-                обновить
-            </button>
-        </div>
+        <button class="btn btn-primary" id="btn-reg" onclick="doRegister()">
+          <span class="spinner" id="sp-reg"></span>
+          <span class="btn-icon">✅</span> Зарегистрироваться
+        </button>
 
-        <div class="list-wrap" id="listWrap">
-            <div class="empty">
-                <svg class="empty-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
-                          d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"/>
-                </svg>
-                <p>Уведомлений пока нет</p>
-                <p>Создайте первое через форму слева</p>
-            </div>
+        <div class="result" id="res-register">
+          <div class="result-head ok" id="res-register-hd">
+            <span class="result-head-icon">🎉</span>
+            <span id="res-register-title"></span>
+          </div>
+          <div class="result-body" id="res-register-body"></div>
         </div>
+      </div>
     </div>
 
+    <!-- ── Telegram ── -->
+    <div class="section" id="sec-linktoken">
+      <div class="page-hd">
+        <h1>✈️ Подключить Telegram</h1>
+        <p>Чтобы получать уведомления в Telegram, перейдите по ссылке ниже и нажмите «Старт»</p>
+      </div>
+
+      <div class="card">
+        <div class="banner info">
+          <span class="banner-icon">💡</span>
+          <span>Идентификатор заполнится автоматически после регистрации. Если вы уже зарегистрированы — вставьте его вручную.</span>
+        </div>
+
+        <div class="field">
+          <label>Ваш идентификатор</label>
+          <input id="link-userid" type="text" placeholder="Заполнится автоматически после регистрации">
+          <div class="field-hint">ℹ️ Вы найдёте его в результате регистрации выше</div>
+        </div>
+
+        <button class="btn btn-primary" id="btn-link" onclick="doLinkToken()">
+          <span class="spinner" id="sp-link"></span>
+          <span class="btn-icon">🔗</span> Получить ссылку для Telegram
+        </button>
+
+        <div class="result" id="res-linktoken">
+          <div class="result-head ok" id="res-linktoken-hd">
+            <span class="result-head-icon">✅</span>
+            <span id="res-linktoken-title"></span>
+          </div>
+          <div class="result-body" id="res-linktoken-body"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Новое уведомление ── -->
+    <div class="section" id="sec-create">
+      <div class="page-hd">
+        <h1>✉️ Новое уведомление</h1>
+        <p>Напишите сообщение и выберите, когда его отправить</p>
+      </div>
+
+      <div class="card">
+        <div class="field">
+          <label>Куда отправить</label>
+          <div class="channel-grid">
+            <div class="channel-card selected" id="ch-telegram" onclick="pickChannel('telegram')">
+              <div class="ch-icon">📱</div>
+              <div class="ch-name">Telegram</div>
+              <div class="ch-desc">Мгновенное сообщение</div>
+            </div>
+            <div class="channel-card" id="ch-email" onclick="pickChannel('email')">
+              <div class="ch-icon">📧</div>
+              <div class="ch-name">Email</div>
+              <div class="ch-desc">На почтовый ящик</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="field">
+          <label>Ваш идентификатор</label>
+          <input id="notif-userid" type="text" placeholder="Заполнится автоматически после регистрации">
+        </div>
+
+        <div class="field">
+          <label>Текст уведомления</label>
+          <textarea id="notif-payload" placeholder="Напишите здесь текст сообщения, которое придёт в нужное время…"></textarea>
+          <div class="field-hint">💬 Это может быть напоминание, задача, поздравление — что угодно</div>
+        </div>
+
+        <div class="field">
+          <label>Дата и время отправки</label>
+          <input id="notif-scheduled" type="datetime-local">
+          <div class="field-hint">🕐 Выберите точный момент, когда придёт уведомление</div>
+        </div>
+
+        <button class="btn btn-primary" id="btn-create" onclick="doCreate()">
+          <span class="spinner" id="sp-create"></span>
+          <span class="btn-icon">📅</span> Запланировать уведомление
+        </button>
+
+        <div class="result" id="res-create">
+          <div class="result-head ok" id="res-create-hd">
+            <span class="result-head-icon">🎉</span>
+            <span id="res-create-title"></span>
+          </div>
+          <div class="result-body" id="res-create-body"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Статус ── -->
+    <div class="section" id="sec-status">
+      <div class="page-hd">
+        <h1>🔍 Статус уведомления</h1>
+        <p>Проверьте, отправилось ли уведомление или ещё ждёт своего времени</p>
+      </div>
+
+      <div class="card">
+        <div class="field">
+          <label>Номер уведомления</label>
+          <input id="status-id" type="text" placeholder="Заполнится автоматически после создания">
+          <div class="field-hint">🔢 Вы получите номер сразу после создания уведомления</div>
+        </div>
+
+        <button class="btn btn-primary" id="btn-status" onclick="doStatus()">
+          <span class="spinner" id="sp-status"></span>
+          <span class="btn-icon">🔍</span> Проверить
+        </button>
+
+        <div class="result" id="res-status">
+          <div class="result-head ok" id="res-status-hd">
+            <span class="result-head-icon">📋</span>
+            <span id="res-status-title"></span>
+          </div>
+          <div class="result-body" id="res-status-body"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Отмена ── -->
+    <div class="section" id="sec-cancel">
+      <div class="page-hd">
+        <h1>🗑️ Отменить уведомление</h1>
+        <p>Удалите запланированное уведомление до момента его отправки</p>
+      </div>
+
+      <div class="card">
+        <div class="banner danger">
+          <span class="banner-icon">⚠️</span>
+          <span>Отмена необратима. Уже отправленные уведомления отменить нельзя.</span>
+        </div>
+
+        <div class="field">
+          <label>Номер уведомления</label>
+          <input id="cancel-id" type="text" placeholder="Заполнится автоматически после создания">
+        </div>
+
+        <button class="btn btn-danger" id="btn-cancel" onclick="doCancel()">
+          <span class="spinner" id="sp-cancel"></span>
+          <span class="btn-icon">🗑️</span> Отменить уведомление
+        </button>
+
+        <div class="result" id="res-cancel">
+          <div class="result-head ok" id="res-cancel-hd">
+            <span class="result-head-icon">✅</span>
+            <span id="res-cancel-title"></span>
+          </div>
+          <div class="result-body" id="res-cancel-body"></div>
+        </div>
+      </div>
+    </div>
+
+  </main>
 </div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
 
 <script>
-    const API = window.location.origin;
+  const BASE = window.location.origin;
+  let channel = 'telegram';
 
-    // ── STATE ──────────────────────────────────────────────────────────────
-    let notifications = [];  // массив объектов из API
-    let filter = 'all';
+  // ── Nav ──
+  function go(id, btn) {
+    document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+    document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
+    document.getElementById('sec-' + id).classList.add('active');
+    btn.classList.add('active');
+    window.scrollTo(0, 0);
+  }
 
-    // ── UTILS ──────────────────────────────────────────────────────────────
-    function esc(str) {
-        const d = document.createElement('div');
-        d.textContent = String(str ?? '');
-        return d.innerHTML;
+  // ── Channel ──
+  function pickChannel(ch) {
+    channel = ch;
+    document.getElementById('ch-telegram').classList.toggle('selected', ch === 'telegram');
+    document.getElementById('ch-email').classList.toggle('selected', ch === 'email');
+  }
+
+  // ── Loading state ──
+  function setLoad(btnId, spId, on) {
+    const btn = document.getElementById(btnId);
+    const sp  = document.getElementById(spId);
+    btn.disabled = on;
+    if (sp) sp.style.display = on ? 'inline-block' : 'none';
+  }
+
+  // ── Result rendering ──
+  function showResult(key, ok, title, bodyHtml) {
+    const wrap  = document.getElementById('res-' + key);
+    const hd    = document.getElementById('res-' + key + '-hd');
+    const ttl   = document.getElementById('res-' + key + '-title');
+    const body  = document.getElementById('res-' + key + '-body');
+
+    wrap.classList.add('show');
+    hd.className = 'result-head ' + (ok ? 'ok' : 'err');
+    hd.querySelector('.result-head-icon').textContent = ok ? '✅' : '❌';
+    ttl.textContent = title;
+    body.innerHTML = bodyHtml;
+  }
+
+  // ── Copy ──
+  function copyText(text) {
+    navigator.clipboard.writeText(text).then(() => toast('Скопировано!'));
+  }
+
+  function copyBox(label, value, extraHtml) {
+    return `<div style="margin-bottom:6px;color:var(--muted);font-size:12px;">${label}</div>
+            <div class="copy-row">
+              <div class="copy-val">${escHtml(value)}</div>
+              <button class="copy-btn" onclick="copyText('${escHtml(value).replace(/'/g,'&#39;')}')">📋 Скопировать</button>
+            </div>
+            ${extraHtml || ''}`;
+  }
+
+  function escHtml(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  // ── Toast ──
+  let toastTimer;
+  function toast(msg) {
+    const el = document.getElementById('toast');
+    el.innerHTML = '✓ ' + msg;
+    el.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => el.classList.remove('show'), 2200);
+  }
+
+  // ── API ──
+  async function req(method, path, body) {
+    const opts = { method, headers: { 'Content-Type': 'application/json' } };
+    if (body) opts.body = JSON.stringify(body);
+    const res = await fetch(BASE + path, opts);
+    let data;
+    try { data = await res.json(); } catch { data = {}; }
+    return { ok: res.ok, status: res.status, data };
+  }
+
+  // ── Health ──
+  async function doHealth() {
+    const pill  = document.getElementById('healthPill');
+    const dot   = document.getElementById('healthDot');
+    const label = document.getElementById('healthLabel');
+    label.textContent = 'проверка…';
+    pill.className = 'health-pill';
+    dot.className = 'dot pulse';
+    try {
+      const r = await req('GET', '/health');
+      if (r.ok) {
+        pill.className = 'health-pill ok';
+        dot.className = 'dot pulse';
+        label.textContent = 'сервис работает';
+      } else {
+        pill.className = 'health-pill err';
+        dot.className = 'dot';
+        label.textContent = 'недоступен';
+      }
+    } catch {
+      pill.className = 'health-pill err';
+      dot.className = 'dot';
+      label.textContent = 'нет соединения';
     }
+  }
 
-    function fmtDate(iso) {
-        if (!iso) return '—';
-        return new Date(iso).toLocaleString('ru-RU', {
-            day: '2-digit', month: '2-digit', year: 'numeric',
-            hour: '2-digit', minute: '2-digit'
-        });
+  // ── Register ──
+  async function doRegister() {
+    const name  = document.getElementById('reg-name').value.trim();
+    const email = document.getElementById('reg-email').value.trim();
+    if (!name)  { toast('Введите ваше имя'); return; }
+    if (!email || !email.includes('@')) { toast('Введите корректный email'); return; }
+    setLoad('btn-reg','sp-reg',true);
+    try {
+      const r = await req('POST','/users',{name,email});
+      if (r.ok && r.data.user_id) {
+        document.getElementById('link-userid').value = r.data.user_id;
+        document.getElementById('notif-userid').value = r.data.user_id;
+        showResult('register', true, 'Вы успешно зарегистрированы!',
+          '<p style="margin-bottom:10px">Аккаунт создан. Идентификатор подставлен в следующие шаги автоматически.</p>' +
+          copyBox('Ваш идентификатор (сохраните его)', r.data.user_id));
+      } else {
+        const msg = r.data.detail || r.data.message || 'Проверьте введённые данные';
+        showResult('register', false, 'Не удалось зарегистрироваться', '<p>' + escHtml(msg) + '</p>');
+      }
+    } catch (e) {
+      showResult('register', false, 'Ошибка соединения', '<p>' + escHtml(e.message) + '</p>');
+    } finally { setLoad('btn-reg','sp-reg',false); }
+  }
+
+  // ── Link token ──
+  async function doLinkToken() {
+    const uid = document.getElementById('link-userid').value.trim();
+    if (!uid) { toast('Введите идентификатор пользователя'); return; }
+    setLoad('btn-link','sp-link',true);
+    try {
+      const r = await req('POST', '/users/' + uid + '/link-token');
+      if (r.ok) {
+        const link = r.data.link || r.data.telegram_link || r.data.url || '';
+        const extra = link
+          ? `<a class="link-open" href="${escHtml(link)}" target="_blank">📱 Открыть Telegram и подключиться</a>`
+          : '';
+        showResult('linktoken', true, 'Ссылка готова!',
+          '<p style="margin-bottom:10px">Перейдите по ссылке и нажмите <strong>«Старт»</strong> в Telegram. Ссылка действует 1 час.</p>' +
+          (link ? copyBox('Ссылка для Telegram', link, extra) : ''));
+      } else {
+        const msg = r.data.detail || r.data.message || 'Возможно, идентификатор введён неверно';
+        showResult('linktoken', false, 'Не удалось создать ссылку', '<p>' + escHtml(msg) + '</p>');
+      }
+    } catch (e) {
+      showResult('linktoken', false, 'Ошибка', '<p>' + escHtml(e.message) + '</p>');
+    } finally { setLoad('btn-link','sp-link',false); }
+  }
+
+  // ── Create ──
+  async function doCreate() {
+    const uid  = document.getElementById('notif-userid').value.trim();
+    const text = document.getElementById('notif-payload').value.trim();
+    const dt   = document.getElementById('notif-scheduled').value;
+    if (!uid)  { toast('Введите идентификатор пользователя'); return; }
+    if (!text) { toast('Напишите текст уведомления'); return; }
+    if (!dt)   { toast('Выберите дату и время'); return; }
+    const scheduled = new Date(dt);
+    if (scheduled <= new Date(Date.now() + 5000)) { toast('Выберите время хотя бы на минуту вперёд'); return; }
+
+    setLoad('btn-create','sp-create',true);
+    try {
+      const r = await req('POST','/notify',{
+        user_id: uid, channel, payload: text,
+        scheduled_at: scheduled.toISOString()
+      });
+      if (r.ok && r.data.id) {
+        document.getElementById('status-id').value = r.data.id;
+        document.getElementById('cancel-id').value = r.data.id;
+        const when = scheduled.toLocaleString('ru-RU',{day:'numeric',month:'long',hour:'2-digit',minute:'2-digit'});
+        showResult('create', true, 'Уведомление запланировано!',
+          `<p style="margin-bottom:10px">Сообщение придёт <strong>${when}</strong> через <strong>${channel === 'telegram' ? 'Telegram' : 'Email'}</strong>.</p>` +
+          copyBox('Номер уведомления (для проверки и отмены)', r.data.id));
+      } else {
+        const msg = r.data.detail || r.data.message || 'Проверьте правильность полей';
+        showResult('create', false, 'Не удалось запланировать', '<p>' + escHtml(msg) + '</p>');
+      }
+    } catch (e) {
+      showResult('create', false, 'Ошибка', '<p>' + escHtml(e.message) + '</p>');
+    } finally { setLoad('btn-create','sp-create',false); }
+  }
+
+// ── Status ──
+async function doStatus() {
+  const id = document.getElementById('status-id').value.trim();
+  if (!id) { toast('Введите номер уведомления'); return; }
+  setLoad('btn-status', 'sp-status', true);
+  
+  try {
+    const r = await req('GET', '/notify/' + id);
+    console.log("Ответ сервера:", r.data); // Посмотри сюда в консоли браузера (F12)
+
+    if (r.ok && r.data) {
+      const d = r.data;
+      
+      // Извлекаем статус, проверяя разные варианты написания
+      const rawStatus = d.Status || d.status || d.state || 'unknown';
+      const statusKey = String(rawStatus).toLowerCase();
+      
+      const labels = {
+        waiting:     '<span class="status-badge s-pending">⏳ Ожидает</span>',
+        in_process:  '<span class="status-badge s-pending">🔄 В обработке</span>',
+        sent:        '<span class="status-badge s-sent">✅ Отправлено</span>',
+        cancelled:   '<span class="status-badge s-cancelled">🚫 Отменено</span>',
+        failed:      '<span class="status-badge s-failed">❌ Ошибка</span>',
+      };
+
+      const badge = labels[statusKey] || `<span class="status-badge s-pending">${escHtml(rawStatus)}</span>`;
+      
+      let html = `<p style="margin-bottom:8px"><strong>Статус:</strong> ${badge}</p>`;
+      
+      // Проверяем ScheduledAt (с большой и маленькой буквы)
+      const scheduledAt = d.ScheduledAt || d.scheduled_at;
+      if (scheduledAt) {
+        const dt = new Date(scheduledAt).toLocaleString('ru-RU', {day:'numeric', month:'long', hour:'2-digit', minute:'2-digit'});
+        html += `<p><strong>Запланировано на:</strong> ${dt}</p>`;
+      }
+      
+      // Канал
+      const chan = d.Channel || d.channel;
+      if (chan) {
+        html += `<p><strong>Канал:</strong> ${chan === 'telegram' ? '📱 Telegram' : '📧 Email'}</p>`;
+      }
+
+      // Ошибка
+      const lastError = d.LastError || d.last_error;
+      if (lastError) {
+        html += `<div style="margin-top:10px;padding:10px;background:var(--danger-light);border-radius:8px;color:var(--danger-text);font-size:13px;"><strong>Ошибка:</strong> ${escHtml(lastError)}</div>`;
+      }
+
+      showResult('status', true, 'Информация об уведомлении', html);
+    } else {
+      const msg = r.data?.detail || r.data?.message || 'Уведомление не найдено';
+      showResult('status', false, 'Уведомление не найдено', '<p>' + escHtml(msg) + '</p>');
     }
+  } catch (e) {
+    console.error("Ошибка запроса:", e);
+    showResult('status', false, 'Ошибка', '<p>' + escHtml(e.message) + '</p>');
+  } finally {
+    setLoad('btn-status', 'sp-status', false);
+  }
+}
 
-    function toLocalInput(date) {
-        const d = new Date(date);
-        const pad = n => String(n).padStart(2,'0');
-        return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-    }
+  // ── Cancel ──
+  async function doCancel() {
+    const id = document.getElementById('cancel-id').value.trim();
+    if (!id) { toast('Введите номер уведомления'); return; }
+    setLoad('btn-cancel','sp-cancel',true);
+    try {
+      const r = await req('DELETE', '/notify/' + id);
+      if (r.ok) {
+        showResult('cancel', true, 'Уведомление отменено', '<p>Уведомление успешно отменено и больше не будет отправлено.</p>');
+      } else {
+        const msg = r.data.detail || r.data.message || 'Возможно, уведомление уже отправлено или не существует';
+        showResult('cancel', false, 'Не удалось отменить', '<p>' + escHtml(msg) + '</p>');
+      }
+    } catch (e) {
+      showResult('cancel', false, 'Ошибка', '<p>' + escHtml(e.message) + '</p>');
+    } finally { setLoad('btn-cancel','sp-cancel',false); }
+  }
 
-    // ── TIMEZONE ───────────────────────────────────────────────────────────
-    function updateTz() {
-        const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-        const off = -new Date().getTimezoneOffset() / 60;
-        document.getElementById('tzBadge').textContent = `${tz} (UTC${off >= 0 ? '+' : ''}${off})`;
-    }
-
-    // ── DATETIME INPUT ─────────────────────────────────────────────────────
-    function initDateTime() {
-        const inp = document.getElementById('scheduledAt');
-        const now = new Date();
-        now.setMinutes(now.getMinutes() + 1);
-        inp.min   = toLocalInput(now);
-        inp.value = toLocalInput(now);
-        updateTimeHint();
-    }
-
-    function updateTimeHint() {
-        const inp = document.getElementById('scheduledAt');
-        const hint = document.getElementById('timeHint');
-        const diff = new Date(inp.value) - new Date();
-        if (diff <= 0) {
-            hint.textContent = '⚠ Время должно быть в будущем';
-            hint.classList.add('warn');
-            return;
-        }
-        hint.classList.remove('warn');
-        const m = Math.floor(diff / 60000);
-        const h = Math.floor(m / 60);
-        hint.textContent = h > 0
-            ? `через ${h} ч ${m % 60} мин`
-            : `через ${m} мин`;
-    }
-
-    // ── CHANNEL HINT ───────────────────────────────────────────────────────
-    document.getElementById('channel').addEventListener('change', e => {
-        const hint = document.getElementById('recipientHint');
-        const inp  = document.getElementById('recipient');
-        if (e.target.value === 'email') {
-            hint.textContent   = 'Введите email: user@example.com';
-            inp.placeholder    = 'user@example.com';
-            inp.type           = 'email';
-        } else if (e.target.value === 'telegram') {
-            hint.textContent   = 'Введите числовой chat_id или @username';
-            inp.placeholder    = '123456789 или @username';
-            inp.type           = 'text';
-        } else {
-            hint.textContent   = 'Выберите канал выше';
-            inp.placeholder    = '';
-            inp.type           = 'text';
-        }
-    });
-
-    document.getElementById('scheduledAt').addEventListener('input', updateTimeHint);
-
-    // ── ALERT ──────────────────────────────────────────────────────────────
-    function showAlert(msg, type = 'success') {
-        const el = document.getElementById('alert');
-        el.className = `alert alert-${type} show`;
-        el.textContent = msg;
-        clearTimeout(el._t);
-        el._t = setTimeout(() => el.classList.remove('show'), 5000);
-    }
-
-    // ── STATS ──────────────────────────────────────────────────────────────
-    function updateStats() {
-        const count = s => notifications.filter(n => n.status === s).length;
-        document.getElementById('statTotal').textContent     = notifications.length;
-        document.getElementById('statWaiting').textContent   = count('waiting');
-        document.getElementById('statSent').textContent      = count('sent');
-        document.getElementById('statFailed').textContent    = count('failed');
-        document.getElementById('statCancelled').textContent = count('cancelled');
-    }
-
-    // ── RENDER ─────────────────────────────────────────────────────────────
-    function render() {
-        const wrap = document.getElementById('listWrap');
-        const list = filter === 'all'
-            ? notifications
-            : notifications.filter(n => n.status === filter);
-
-        updateStats();
-
-        if (list.length === 0) {
-            wrap.innerHTML = `
-                <div class="empty">
-                    <svg class="empty-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
-                              d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"/>
-                    </svg>
-                    <p>${filter === 'all' ? 'Уведомлений пока нет' : `Нет записей со статусом «${filter}»`}</p>
-                </div>`;
-            return;
-        }
-
-        wrap.innerHTML = list.map(n => {
-            const statusClass   = `badge-${(n.status||'waiting').toLowerCase()}`;
-            const canCancel     = !['sent','cancelled'].includes(n.status);
-            const recipientLabel = esc(n.recipient_identifier || n.recipient || '—');
-
-            return `
-            <div class="ncard" data-id="${esc(n.id)}">
-                <div class="ncard-top">
-                    <span class="ncard-id">${esc(n.id)}</span>
-                    <span class="badge ${statusClass}">${esc(n.status||'waiting')}</span>
-                </div>
-                <div class="ncard-body">
-                    <div class="ncard-recipient">
-                        <span class="channel-tag">${esc(n.channel)}</span>
-                        ${recipientLabel}
-                    </div>
-                    <div class="ncard-payload">${esc(n.payload)}</div>
-                </div>
-                <div class="ncard-meta">
-                    <span class="meta-item">
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
-                        </svg>
-                        ${fmtDate(n.scheduled_at)}
-                    </span>
-                    ${n.sent_at ? `<span class="meta-item" style="color:var(--green)">
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <polyline points="20 6 9 17 4 12"/>
-                        </svg>
-                        ${fmtDate(n.sent_at)}
-                    </span>` : ''}
-                    ${n.retry_count ? `<span class="meta-item" style="color:var(--orange)">
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
-                        </svg>
-                        retry: ${n.retry_count}
-                    </span>` : ''}
-                    <span class="meta-item">создано: ${fmtDate(n.created_at)}</span>
-                </div>
-                ${n.last_error ? `<div class="error-box">⚠ ${esc(n.last_error)}</div>` : ''}
-                <div class="ncard-actions">
-                    ${canCancel ? `<button class="btn-action btn-cancel" data-action="cancel" data-id="${esc(n.id)}">Отменить</button>` : ''}
-                    <button class="btn-action btn-refresh" data-action="refresh" data-id="${esc(n.id)}">Обновить</button>
-                </div>
-            </div>`;
-        }).join('');
-    }
-
-    // ── DELEGATION — один listener на весь список ──────────────────────────
-    // ИСПРАВЛЕНО: listener навешивается один раз на wrapper, не при каждом render()
-    document.getElementById('listWrap').addEventListener('click', e => {
-        const btn = e.target.closest('[data-action]');
-        if (!btn) return;
-        const { action, id } = btn.dataset;
-        if (action === 'cancel')  doCancel(id);
-        if (action === 'refresh') doRefresh(id);
-    });
-
-    // ── FILTER ─────────────────────────────────────────────────────────────
-    document.querySelector('.toolbar').addEventListener('click', e => {
-        const btn = e.target.closest('.filter-btn');
-        if (!btn) return;
-        filter = btn.dataset.filter;
-        document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        render();
-    });
-
-    // ── API CALLS ──────────────────────────────────────────────────────────
-    async function doCreate(data) {
-        const resp = await fetch(`${API}/notify`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(data),
-        });
-        return [resp.ok, await resp.json()];
-    }
-
-    async function fetchStatus(id) {
-        try {
-            const resp = await fetch(`${API}/notify/${id}`);
-            if (resp.ok) return await resp.json();
-        } catch {}
-        return null;
-    }
-
-    async function doCancel(id) {
-        if (!confirm('Отменить это уведомление?')) return;
-        try {
-            const resp = await fetch(`${API}/notify/${id}`, { method: 'DELETE' });
-            if (resp.ok) {
-                const n = notifications.find(n => n.id === id);
-                if (n) n.status = 'cancelled';
-                showAlert('Уведомление отменено');
-                render();
-            } else {
-                const r = await resp.json();
-                showAlert(`Ошибка: ${r.error || r.details}`, 'error');
-            }
-        } catch (err) {
-            showAlert(`Ошибка сети: ${err.message}`, 'error');
-        }
-    }
-
-    async function doRefresh(id) {
-        const data = await fetchStatus(id);
-        if (!data) return;
-        const idx = notifications.findIndex(n => n.id === id);
-        if (idx !== -1) {
-            // ИСПРАВЛЕНО: маппим только поля которые реально есть в API-ответе
-            notifications[idx] = {
-                ...notifications[idx],
-                status:               data.status,
-                sent_at:              data.sent_at,
-                retry_count:          data.retry_count,
-                last_error:           data.last_error,
-                recipient_identifier: data.recipient_identifier,
-                scheduled_at:         data.scheduled_at,
-                created_at:           data.created_at,
-            };
-            render();
-        }
-    }
-
-    // ── REFRESH ALL ────────────────────────────────────────────────────────
-    // Запросы идут последовательно с паузой 300ms — не заваливаем лог сервера
-    // пачкой одновременных запросов при нескольких активных уведомлениях.
-    async function refreshAll() {
-        const btn = document.getElementById('refreshAllBtn');
-        btn.classList.add('spinning');
-        const active = notifications.filter(n => ['waiting','in_process'].includes(n.status));
-        for (const n of active) {
-            await doRefresh(n.id);
-            if (active.length > 1) await new Promise(r => setTimeout(r, 300));
-        }
-        btn.classList.remove('spinning');
-    }
-
-    document.getElementById('refreshAllBtn').addEventListener('click', refreshAll);
-
-    // ── SUBMIT FORM ────────────────────────────────────────────────────────
-    document.getElementById('submitBtn').addEventListener('click', async () => {
-        const channel     = document.getElementById('channel').value;
-        const recipient   = document.getElementById('recipient').value.trim();
-        const payload     = document.getElementById('payload').value.trim();
-        const scheduledAt = document.getElementById('scheduledAt').value;
-
-        if (!channel || !recipient || !payload || !scheduledAt) {
-            showAlert('Заполните все обязательные поля', 'error');
-            return;
-        }
-
-        const btn     = document.getElementById('submitBtn');
-        const txt     = document.getElementById('submitText');
-        const spinner = document.getElementById('submitSpinner');
-        btn.disabled      = true;
-        txt.style.display = 'none';
-        spinner.style.display = '';
-
-        try {
-            const [ok, result] = await doCreate({
-                channel,
-                recipient,
-                payload,
-                // ИСПРАВЛЕНО: нет user_id — его убрали из API
-                scheduled_at: new Date(scheduledAt).toISOString(),
-            });
-
-            if (ok) {
-                showAlert('Уведомление создано');
-                document.getElementById('payload').value = '';
-                initDateTime();
-
-                // Добавляем в начало списка, используя поля из ответа API
-                notifications.unshift({
-                    id:                   result.id,
-                    channel:              result.channel,
-                    recipient_identifier: result.recipient,
-                    payload:              result.payload,
-                    scheduled_at:         result.scheduled_at,
-                    status:               'waiting',
-                    created_at:           new Date().toISOString(),
-                    retry_count:          0,
-                    sent_at:              null,
-                    last_error:           null,
-                });
-                render();
-            } else {
-                showAlert(`Ошибка: ${result.error || result.details || 'неизвестная ошибка'}`, 'error');
-            }
-        } catch (err) {
-            showAlert(`Ошибка сети: ${err.message}`, 'error');
-        } finally {
-            btn.disabled      = false;
-            txt.style.display = '';
-            spinner.style.display = 'none';
-        }
-    });
-
-    // ── AUTO-REFRESH ───────────────────────────────────────────────────────
-    // 30s вместо 10s — снижает шум в логах сервера в 3 раза.
-    // Для финальных статусов (sent/cancelled/failed без retry) обновление не нужно —
-    // refreshAll сам фильтрует только waiting/in_process.
-    setInterval(refreshAll, 30_000);
-    setInterval(updateTimeHint, 30_000);
-
-    // ── INIT ───────────────────────────────────────────────────────────────
-    updateTz();
-    initDateTime();
-    render();
+  // ── Init ──
+  (function() {
+    const d = new Date(Date.now() + 60000);
+    document.getElementById('notif-scheduled').value =
+      new Date(d.getTime() - d.getTimezoneOffset()*60000).toISOString().slice(0,16);
+    doHealth();
+  })();
 </script>
 </body>
 </html>

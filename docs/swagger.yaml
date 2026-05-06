@@ -1,95 +1,140 @@
 basePath: /
 definitions:
-  httpt.CreateNotificationRequest:
+  entity.Channel:
+    enum:
+    - telegram
+    - email
+    type: string
+    x-enum-varnames:
+    - Telegram
+    - Email
+  entity.Notification:
     properties:
       channel:
-        example: email
-        type: string
-      payload:
-        example: 'Your order #123 is ready!'
-        type: string
-      recipient:
-        example: user@example.com
-        type: string
-      scheduled_at:
-        example: "2023-10-27T10:00:00Z"
-        type: string
-    type: object
-  httpt.CreateNotificationResponse:
-    properties:
-      channel:
-        example: email
+        $ref: '#/definitions/entity.Channel'
+      createdAt:
         type: string
       id:
-        example: 550e8400-e29b-41d4-a716-446655440001
         type: string
-      message:
-        example: Notification created successfully
+      lastError:
         type: string
       payload:
-        example: 'Your order #123 is ready!'
         type: string
-      recipient:
-        example: user@example.com
+      retryCount:
+        type: integer
+      scheduledAt:
         type: string
-      scheduled_at:
-        example: "2023-10-27T10:00:00Z"
+      sentAt:
+        type: string
+      status:
+        $ref: '#/definitions/entity.Status'
+      userID:
         type: string
     type: object
-  httpt.ErrorResponse:
+  entity.Status:
+    enum:
+    - waiting
+    - in_process
+    - sent
+    - failed
+    - cancelled
+    type: string
+    x-enum-varnames:
+    - StatusWaiting
+    - StatusInProcess
+    - StatusSent
+    - StatusFailed
+    - StatusCancelled
+  handler.CreateNotificationRequest:
+    properties:
+      channel:
+        allOf:
+        - $ref: '#/definitions/entity.Channel'
+        enum:
+        - telegram
+        - email
+      payload:
+        maxLength: 100000
+        type: string
+      scheduled_at:
+        type: string
+      user_id:
+        type: string
+    required:
+    - channel
+    - payload
+    - scheduled_at
+    - user_id
+    type: object
+  handler.ErrorResponse:
     properties:
       code:
         example: not_found
         type: string
       details:
-        example: notification with id 123 does not exist
+        example: notify with id 123 does not exist
         type: string
       error:
-        example: notification not found
+        example: notify not found
         type: string
     type: object
-  httpt.NotificationStatusResponse:
+  handler.LinkTokenResponse:
     properties:
-      channel:
-        example: EMAIL
+      expires_in:
         type: string
-      created_at:
-        example: "2023-10-26T10:00:00Z"
+      link:
         type: string
-      id:
-        example: 550e8400-e29b-41d4-a716-446655440001
+      message:
         type: string
-      last_error:
-        example: connection timeout
+      token:
         type: string
-      payload:
-        example: 'Your order #123 is ready!'
-        type: string
-      retry_count:
-        example: 1
-        type: integer
-      scheduled_at:
-        example: "2023-10-27T10:00:00Z"
-        type: string
-      sent_at:
-        example: "2023-10-27T10:00:05Z"
-        type: string
-      status:
-        example: waiting
-        type: string
+    required:
+    - expires_in
+    - link
+    - token
     type: object
-  httpt.SuccessResponse:
+  handler.NotificationCreatedResponse:
+    properties:
+      id:
+        type: string
+      message:
+        type: string
+    required:
+    - id
+    type: object
+  handler.RegisterUserRequest:
+    properties:
+      email:
+        type: string
+      name:
+        maxLength: 100
+        minLength: 1
+        type: string
+    required:
+    - email
+    - name
+    type: object
+  handler.SuccessResponse:
     properties:
       message:
-        example: Notification cancelled successfully
+        example: Operation completed successfully
         type: string
+    type: object
+  handler.UserRegisteredResponse:
+    properties:
+      message:
+        type: string
+      user_id:
+        type: string
+    required:
+    - user_id
     type: object
 host: localhost:8080
 info:
   contact:
     email: stormkillpeople@gmail.com
     name: RidusM
-  description: API для работы с уведомлениями
+  description: API for working with notifications
   license:
     name: MIT-0
     url: https://github.com/aws/mit-0
@@ -97,43 +142,60 @@ info:
   title: Notification Service API
   version: "1.0"
 paths:
+  /health:
+    get:
+      description: Return service status and current timestamp. No authentication
+        required.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Service is healthy
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Health check endpoint
+      tags:
+      - System
   /notify:
     post:
       consumes:
       - application/json
-      description: Планирует отправку уведомления на указанное время
+      description: Schedules a notification to be sent to a specific user at a given
+        time
       parameters:
-      - description: Данные уведомления
+      - description: Notification details
         in: body
         name: request
         required: true
         schema:
-          $ref: '#/definitions/httpt.CreateNotificationRequest'
+          $ref: '#/definitions/handler.CreateNotificationRequest'
       produces:
       - application/json
       responses:
         "201":
-          description: Уведомление создано
+          description: Notification created
           schema:
-            $ref: '#/definitions/httpt.CreateNotificationResponse'
+            $ref: '#/definitions/handler.NotificationCreatedResponse'
         "400":
-          description: Ошибка валидации
+          description: Invalid input data
           schema:
-            $ref: '#/definitions/httpt.ErrorResponse'
+            $ref: '#/definitions/handler.ErrorResponse'
         "500":
-          description: Внутренняя ошибка
+          description: Internal server error
           schema:
-            $ref: '#/definitions/httpt.ErrorResponse'
-      summary: Создать уведомление
+            $ref: '#/definitions/handler.ErrorResponse'
+      summary: Create a scheduled notification
       tags:
-      - Notification
+      - Notifications
   /notify/{id}:
     delete:
       consumes:
       - application/json
-      description: Отменяет запланированное уведомление
+      description: Cancels a scheduled notification if it hasn't been sent yet
       parameters:
-      - description: Уникальный идентификатор уведомления
+      - description: Notification UUID
         in: path
         name: id
         required: true
@@ -142,34 +204,30 @@ paths:
       - application/json
       responses:
         "200":
-          description: Успешный ответ
+          description: Cancellation successful
           schema:
-            $ref: '#/definitions/httpt.SuccessResponse'
+            $ref: '#/definitions/handler.SuccessResponse'
         "400":
-          description: Неверный формат notify_id
+          description: Invalid ID format
           schema:
-            $ref: '#/definitions/httpt.ErrorResponse'
+            $ref: '#/definitions/handler.ErrorResponse'
         "404":
-          description: Уведомление не найдено
+          description: Notification not found
           schema:
-            $ref: '#/definitions/httpt.ErrorResponse'
+            $ref: '#/definitions/handler.ErrorResponse'
         "409":
-          description: Уведомление уже отправлено или отменено
+          description: Notification already sent or cancelled
           schema:
-            $ref: '#/definitions/httpt.ErrorResponse'
-        "500":
-          description: Внутренняя ошибка сервера
-          schema:
-            $ref: '#/definitions/httpt.ErrorResponse'
-      summary: Отменить уведомление
+            $ref: '#/definitions/handler.ErrorResponse'
+      summary: Cancel a notification
       tags:
-      - Notification
+      - Notifications
     get:
       consumes:
       - application/json
-      description: Возвращает статус уведомления по уникальному идентификатору
+      description: Returns the current status of a notification by its ID
       parameters:
-      - description: Уникальный идентификатор уведомления
+      - description: Notification UUID
         in: path
         name: id
         required: true
@@ -178,22 +236,74 @@ paths:
       - application/json
       responses:
         "200":
-          description: Успешный ответ с статусом уведомления
+          description: Notification details
           schema:
-            $ref: '#/definitions/httpt.NotificationStatusResponse'
+            $ref: '#/definitions/entity.Notification'
         "400":
-          description: Неверный формат notify_id
+          description: Invalid ID format
           schema:
-            $ref: '#/definitions/httpt.ErrorResponse'
+            $ref: '#/definitions/handler.ErrorResponse'
         "404":
-          description: Уведомление не найдено
+          description: Notification not found
           schema:
-            $ref: '#/definitions/httpt.ErrorResponse'
-        "500":
-          description: Внутренняя ошибка сервера
-          schema:
-            $ref: '#/definitions/httpt.ErrorResponse'
-      summary: Получить статус уведомления
+            $ref: '#/definitions/handler.ErrorResponse'
+      summary: Get notification status
       tags:
-      - Notification
+      - Notifications
+  /users:
+    post:
+      consumes:
+      - application/json
+      description: Registers a user to receive notifications via Email or Telegram
+      parameters:
+      - description: User registration data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handler.RegisterUserRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: User registered successfully
+          schema:
+            $ref: '#/definitions/handler.UserRegisteredResponse'
+        "400":
+          description: Invalid input data
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "409":
+          description: Email already exists
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      summary: Register a new user
+      tags:
+      - Users
+  /users/{user_id}/link-token:
+    post:
+      consumes:
+      - application/json
+      description: Generates a one-time token to link the user's account with Telegram
+        bot
+      parameters:
+      - description: User UUID
+        in: path
+        name: user_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Link token and instruction
+          schema:
+            $ref: '#/definitions/handler.LinkTokenResponse'
+        "404":
+          description: User not found
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      summary: Generate Telegram Link Token
+      tags:
+      - Users
 swagger: "2.0"

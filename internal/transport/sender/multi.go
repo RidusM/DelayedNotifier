@@ -8,7 +8,7 @@ import (
 )
 
 type NotificationSender interface {
-	Send(ctx context.Context, notification entity.Notification) error
+	Send(ctx context.Context, n entity.Notification, recipient string) error
 }
 
 type MultiSender struct {
@@ -21,24 +21,23 @@ func NewMultiSender() *MultiSender {
 	}
 }
 
-func (s *MultiSender) Register(channel entity.Channel, sender NotificationSender) {
-	s.senders[channel] = sender
+func (m *MultiSender) Register(channel entity.Channel, sender NotificationSender) {
+	m.senders[channel] = sender
 }
 
-func (s *MultiSender) Send(ctx context.Context, n entity.Notification) error {
-	const op = "transport.multi.Send"
+func (m *MultiSender) Send(ctx context.Context, n entity.Notification, recipient string) error {
+	const op = "sender.MultiSender.Send"
 
 	if !n.Channel.IsValid() {
 		return fmt.Errorf("%s: invalid channel %q", op, n.Channel)
 	}
 
-	sender, ok := s.senders[n.Channel]
+	sender, ok := m.senders[n.Channel]
 	if !ok {
 		return fmt.Errorf("%s: no sender registered for channel %q", op, n.Channel)
 	}
 
-	err := sender.Send(ctx, n)
-	if err != nil {
+	if err := sender.Send(ctx, n, recipient); err != nil {
 		return fmt.Errorf("%s: channel=%q: %w", op, n.Channel, err)
 	}
 	return nil

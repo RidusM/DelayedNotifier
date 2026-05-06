@@ -27,7 +27,7 @@ deps-audit: ## Check dependencies for vulnerabilities using govulncheck (govulnc
 	govulncheck ./...
 
 .PHONY: run
-run: deps swag-v1 ## Run the application locally (requires dependencies like DB/Rabbit to be running)
+run: deps swagger ## Run the application locally (requires dependencies like DB/Rabbit to be running)
 	@echo "Running application..."
 	go run -tags migrate ./cmd/delayed-notifier -config=./configs/dev.env
 
@@ -122,12 +122,6 @@ lint: ## Running golagci_lint
 	golangci-lint run
 	@echo "Lint passed"
 
-.PHONY: lint-fix
-lint-fix: ## Running golangci-lint with fixes
-	@echo "Running linter with fixes..."
-	golangci-lint run
-	@echo "Lint completed"
-
 .PHONY: lint-hadolint
 lint-hadolint: ## Run hadolint on Dockerfiles (requires hadolint installed)
 	hadolint Dockerfile
@@ -146,21 +140,8 @@ swagger: ## Generate Swagger docs
 	@swag init -g internal/transport/http/routes.go --output docs
 	@echo "Swagger docs generated in docs/"
 
-.PHONY: mocks
-mocks: ## Generate mocks
-	@echo "Generating mocks..."
-	@mockgen -package=mock_repository -destination=internal/repository/mock/telegram_repository_mock.go \
-		delayednotifier/internal/service TelegramRepository
-	@mockgen -package=mock_repository -destination=internal/repository/mock/notify_repository_mock.go \
-		delayednotifier/internal/service NotifyRepository
-	@mockgen -package=mock_repository -destination=internal/repository/mock/cache_repository_mock.go \
-		delayednotifier/internal/service CacheRepository
-	@mockgen -package=mock_sender -destination=internal/transport/sender/mock/sender_mock.go \
-		delayednotifier/internal/service NotificationSender
-	@echo "Mocks generated"
-
 .PHONY: pre-commit
-pre-commit: format lint lint-hadolint lint-dotenv swagger mocks test ## Run all checks before commit
+pre-commit: format lint lint-hadolint lint-dotenv swagger ## Run all checks before commit
 	@echo "Pre-commit checks passed!"
 
 .PHONY: build

@@ -1,34 +1,46 @@
 package entity
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
 )
 
 type Notification struct {
-	ID                  uuid.UUID  `json:"id"                   validate:"required,uuid"`
-	Channel             Channel    `json:"channel"              validate:"required,oneof=telegram email"`
-	Payload             string     `json:"payload"`
-	RecipientIdentifier string     `json:"recipient_identifier" validate:"required"`
-	ScheduledAt         time.Time  `json:"scheduled_at"         validate:"required"`
-	SentAt              *time.Time `json:"sent_at,omitempty"`
-	Status              Status     `json:"status"               validate:"required,oneof=waiting in_process sent failed cancelled"`
-	RetryCount          int        `json:"retry_count"`
-	LastError           *string    `json:"last_error,omitempty"`
-
-	CreatedAt time.Time `json:"created_at" validate:"-"`
+	ID          uuid.UUID
+	UserID      uuid.UUID
+	Channel     Channel
+	Payload     string
+	ScheduledAt time.Time
+	SentAt      *time.Time
+	Status      Status
+	RetryCount  int
+	LastError   *string
+	CreatedAt   time.Time
 }
 
-func (n *Notification) NormalizeTimezones() {
-	if !n.ScheduledAt.IsZero() {
-		n.ScheduledAt = n.ScheduledAt.UTC()
+func (n *Notification) Validate() error {
+	if n.ID == uuid.Nil {
+		return fmt.Errorf("notification id is empty: %w", ErrInvalidData)
 	}
-	if n.SentAt != nil && !n.SentAt.IsZero() {
-		t := n.SentAt.UTC()
-		n.SentAt = &t
+	if n.UserID == uuid.Nil {
+		return fmt.Errorf("user id is empty: %w", ErrInvalidData)
 	}
-	if !n.CreatedAt.IsZero() {
-		n.CreatedAt = n.CreatedAt.UTC()
+	if !n.Channel.IsValid() {
+		return fmt.Errorf("invalid channel '%s': %w", n.Channel, ErrInvalidData)
 	}
+	if n.Payload == "" {
+		return fmt.Errorf("payload is empty: %w", ErrInvalidData)
+	}
+	if n.ScheduledAt.IsZero() {
+		return fmt.Errorf("scheduled_at is zero: %w", ErrInvalidData)
+	}
+	if n.Status == "" {
+		return fmt.Errorf("status is empty: %w", ErrInvalidData)
+	}
+	if !n.Status.IsValid() {
+		return fmt.Errorf("invalid status '%s': %w", n.Status, ErrInvalidData)
+	}
+	return nil
 }
