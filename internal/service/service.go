@@ -188,7 +188,7 @@ func (s *NotifyService) RegisterUser(ctx context.Context, req RegisterUserReques
 
 	err = s.tm.ExecuteInTransaction(ctx, "register_user", func(tx pgxdriver.QueryExecuter) error {
 		if err = s.userRepo.Create(ctx, tx, user); err != nil {
-			return transaction.HandleError("create", err)
+			return transaction.HandleError(err)
 		}
 		return nil
 	})
@@ -227,7 +227,7 @@ func (s *NotifyService) GenerateLinkToken(ctx context.Context, userID uuid.UUID)
 
 	err := s.tm.ExecuteInTransaction(ctx, "create_link_token", func(tx pgxdriver.QueryExecuter) error {
 		if err := s.userRepo.CreateLinkToken(ctx, tx, userID, token, expiresAt); err != nil {
-			return transaction.HandleError("create", err)
+			return transaction.HandleError(err)
 		}
 		return nil
 	})
@@ -275,7 +275,7 @@ func (s *NotifyService) LinkTelegramByToken(ctx context.Context, token string, c
 		}
 
 		if err = s.userRepo.UpdateTelegramID(ctx, tx, user.ID, chatID); err != nil {
-			return transaction.HandleError("update_telegram_id", err)
+			return transaction.HandleError(err)
 		}
 
 		return nil
@@ -362,7 +362,7 @@ func (s *NotifyService) CreateNotify(ctx context.Context, req CreateNotification
 
 	err = s.tm.ExecuteInTransaction(ctx, "create_notification", func(tx pgxdriver.QueryExecuter) error {
 		if err = s.notifyRepo.Create(ctx, tx, notification); err != nil {
-			return transaction.HandleError("create", err)
+			return transaction.HandleError(err)
 		}
 		return nil
 	})
@@ -461,7 +461,7 @@ func (s *NotifyService) Cancel(ctx context.Context, id uuid.UUID) error {
 
 		cancelReason := "cancelled by user"
 		if err = s.notifyRepo.UpdateStatus(ctx, tx, id, entity.StatusCancelled, &cancelReason); err != nil {
-			return transaction.HandleError("update_status", err)
+			return transaction.HandleError(err)
 		}
 		return nil
 	})
@@ -500,7 +500,7 @@ func (s *NotifyService) ProcessQueue(ctx context.Context) (*ProcessingStats, err
 		var err error
 		notifications, err = s.notifyRepo.GetForProcess(procCtx, tx, s.queryLimit)
 		if err != nil {
-			return transaction.HandleError("get", err)
+			return transaction.HandleError(err)
 		}
 		return nil
 	})

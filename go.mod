@@ -2,7 +2,7 @@ module delayednotifier
 
 go 1.25.5
 
-replace github.com/wb-go/wbf => github.com/RidusM/wbf v0.0.0-20260506171314-2c33decf6857
+replace github.com/wb-go/wbf => github.com/RidusM/wbf v0.0.0-20260507102658-507d6c1d9e08
 
 require (
 	github.com/Masterminds/squirrel v1.5.4

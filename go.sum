@@ -5,8 +5,8 @@ github.com/KyleBanks/depth v1.2.1 h1:5h8fQADFrWtarTdtDudMmGsC7GPbOAu6RVB3ffsVFHc
 github.com/KyleBanks/depth v1.2.1/go.mod h1:jzSb9d0L43HxTQfT+oSA1EEp2q+ne2uh6XgeJcm8brE=
 github.com/Masterminds/squirrel v1.5.4 h1:uUcX/aBc8O7Fg9kaISIUsHXdKuqehiXAMQTYX8afzqM=
 github.com/Masterminds/squirrel v1.5.4/go.mod h1:NNaOrjSoIDfDA40n7sr2tPNZRfjzjA400rg+riTZj10=
-github.com/RidusM/wbf v0.0.0-20260506171314-2c33decf6857 h1:6ZWZS3vHOmFF5sWsRBGLdctCOoycQlKlzt3iTgwkh3g=
-github.com/RidusM/wbf v0.0.0-20260506171314-2c33decf6857/go.mod h1:rm5PR6mbAlOnhacTFLFF6+d9v0cL9mXt7uukehqM6JQ=
+github.com/RidusM/wbf v0.0.0-20260507102658-507d6c1d9e08 h1:uZ8Ogynm4ib3E6G6FqHKlUcIvyp8bnS2fY3gaDBUcVg=
+github.com/RidusM/wbf v0.0.0-20260507102658-507d6c1d9e08/go.mod h1:rm5PR6mbAlOnhacTFLFF6+d9v0cL9mXt7uukehqM6JQ=
 github.com/bytedance/gopkg v0.1.4 h1:oZnQwnX82KAIWb7033bEwtxvTqXcYMxDBaQxo5JJHWM=
 github.com/bytedance/gopkg v0.1.4/go.mod h1:v1zWfPm21Fb+OsyXN2VAHdL6TBb2L88anLQgdyje6R4=
 github.com/bytedance/sonic v1.15.1 h1:nJD5PmM0vY7J8CT6MxoqbVAAMhkSmV2HgRAUrrpLoOw=
