@@ -24,10 +24,9 @@ type (
 	}
 
 	Service struct {
-		QueryLimit       uint64        `env:"QUERY_LIMIT"        env-default:"10" validate:"min=1,max=100"`
-		RetryDelay       time.Duration `env:"RETRY_DELAY"        env-default:"5m" validate:"gte=1m,lte=1h"`
-		MaxRetries       int           `env:"MAX_RETRIES"        env-default:"3"  validate:"min=1,max=10"`
-		MaxRetryExponent int           `env:"MAX_RETRY_EXPONENT" env-default:"4"  validate:"min=0,max=10"`
+		QueryLimit uint64        `env:"QUERY_LIMIT"        env-default:"10" validate:"min=1,max=100"`
+		RetryDelay time.Duration `env:"RETRY_DELAY"        env-default:"5m" validate:"gte=1m,lte=1h"`
+		MaxRetries int           `env:"MAX_RETRIES"        env-default:"3"  validate:"min=1,max=10"`
 	}
 
 	Database struct {

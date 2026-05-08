@@ -123,10 +123,10 @@ make run
 
 ### Приложение
 
-| Переменная    | По умолчанию       | Описание                                  |
-|---------------|--------------------|-------------------------------------------|
-| `APP_NAME`    | `delayed-notifier` | Название сервиса (используется в логах)   |
-| `APP_VERSION` | `1.0.0`            | Версия                                    |
+| Переменная    | По умолчанию       | Описание                                     |
+|---------------|--------------------|----------------------------------------------|
+| `APP_NAME`    | `delayed-notifier` | Название сервиса (используется в логах)      |
+| `APP_VERSION` | `1.0.0`            | Версия                                       |
 | `ENV`         | `local`            | Окружение: `local`, `dev`, `staging`, `prod` |
 
 ### Сервис (логика retry)
@@ -139,28 +139,40 @@ make run
 
 ### База данных
 
-| Переменная           | По умолчанию                                                    |
-|----------------------|-----------------------------------------------------------------|
+| Переменная           | По умолчанию                                                     |
+|----------------------|------------------------------------------------------------------|
 | `DB_DSN`             | `postgres://postgres:postgres@db:5432/notify_db?sslmode=disable` |
-| `DB_POOL_MAX`        | `20`                                                            |
-| `DB_CONN_ATTEMPTS`   | `5`                                                             |
+| `DB_POOL_MAX`        | `20`                                                             |
+| `DB_CONN_ATTEMPTS`   | `5`                                                              |
 
 ### Redis
 
-| Переменная      | По умолчанию     |
-|-----------------|------------------|
-| `CACHE_ADDR`    | `redis:6379`     |
-| `CACHE_PASSWORD`| _(пусто)_        |
+| Переменная      | По умолчанию       |
+|-----------------|--------------------|
+| `CACHE_ADDR`          | `redis:6379` |
+| `CACHE_PASSWORD`      | _(пусто)_    |
+| `CACHE_DB`            | `0`          |
+| `CACHE_DIAL_TIMEOUT`  | `5s`         |
+| `CACHE_READ_TIMEOUT`  | `3s`         |
+| `CACHE_WRITE_TIMEOUT` | `3s`         |
+| `CACHE_POOL_SIZE`     | `20`         |
 
 ### RabbitMQ
 
-| Переменная              | По умолчанию                    |
-|-------------------------|---------------------------------|
-| `RABBIT_URL`            | `amqp://guest:guest@rabbitmq:5672/` |
-| `RABBIT_EXCHANGE`       | `notifications`                 |
-| `RABBIT_WORKERS`        | `2`                             |
-| `RABBIT_PREFETCH`       | `10`                            |
-| `RABBIT_QUEUE_PROCESS_INTERVAL` | `5s`                  |
+| Переменная               | По умолчанию                               |
+|--------------------------|--------------------------------------------|
+| `RABBIT_URL`                    | `amqp://guest:guest@rabbitmq:5672/` |
+| `RABBIT_CONNECTION_NAME`        | _(пусто)_                           |
+| `RABBIT_CONNECT_TIMEOUT`        | `30s`                               |
+| `RABBIT_HEARTBEAT`              | `10s`                               |
+| `RABBIT_EXCHANGE`               | `notifications`                     |
+| `RABBIT_CONTENT_TYPE`           | _(пусто)_                           |
+| `RABBIT_ATTEMPTS`               | `3`                                 |
+| `RABBIT_DELAY`                  | `1s`                                |
+| `RABBIT_BACKOFF`                | `2.0`                               |
+| `RABBIT_WORKERS`                | `2`                                 |
+| `RABBIT_PREFETCH`               | `10`                                |
+| `RABBIT_QUEUE_PROCESS_INTERVAL` | `5s`                                |
 
 ### Email (SMTP)
 
@@ -185,11 +197,27 @@ make run
 
 ### HTTP-сервер
 
-| Переменная              | По умолчанию |
-|-------------------------|--------------|
-| `HTTP_HOST`             | `0.0.0.0`    |
-| `HTTP_PORT`             | `8080`       |
-| `HTTP_SHUTDOWN_TIMEOUT` | `10s`        |
+| Переменная                 | По умолчанию |
+|----------------------------|--------------|
+| `HTTP_HOST`                | `0.0.0.0`    |
+| `HTTP_PORT`                | `8080`       |
+| `HTTP_READ_TIMEOUT`        | `5s`         |
+| `HTTP_WRITE_TIMEOUT`       | `5s`         |
+| `HTTP_IDLE_TIMEOUT`        | `60s`        |
+| `HTTP_SHUTDOWN_TIMEOUT`    | `10s`        |
+| `HTTP_READ_HEADER_TIMEOUT` | `5s`         |
+| `HTTP_MAX_HEADER_BYTES`    | `1048576`    |
+
+### Logger
+
+| Переменная           | По умолчанию                  |
+|----------------------|-------------------------------|
+| `LOGGER_LEVEL`       | `info`                        |
+| `LOGGER_FILENAME`    | `./logs/delayed-notifier.log` |
+| `LOGGER_MAX_SIZE`    | `100`                         |
+| `LOGGER_MAX_BACKUPS` | `3`                           |
+| `LOGGER_MAX_AGE`     | `28`                          |
+
 
 ---
 
