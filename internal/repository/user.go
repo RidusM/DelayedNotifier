@@ -193,7 +193,7 @@ func (r *UserRepository) GetUserByLinkToken(
 		return uuid.Nil, fmt.Errorf("%s: query token: %w", op, err)
 	}
 
-	if time.Now().UTC().After(expiresAt) {
+	if time.Now().After(expiresAt) {
 		return uuid.Nil, fmt.Errorf("%s: %w", op, entity.ErrInvalidData)
 	}
 

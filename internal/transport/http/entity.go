@@ -64,3 +64,9 @@ type ErrorResponse struct {
 type SuccessResponse struct {
 	Message string `json:"message" example:"Operation completed successfully"`
 }
+
+// swagger:model HealthResponse
+type HealthResponse struct {
+	Status string    `json:"status" example:"ok"`
+	Time   time.Time `json:"time"   example:"2026-05-08T06:04:15Z"`
+}

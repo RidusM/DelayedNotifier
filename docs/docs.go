@@ -37,10 +37,7 @@ const docTemplate = `{
                     "200": {
                         "description": "Service is healthy",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
+                            "$ref": "#/definitions/handler.HealthResponse"
                         }
                     }
                 }
@@ -383,6 +380,19 @@ const docTemplate = `{
                 "error": {
                     "type": "string",
                     "example": "validation failed"
+                }
+            }
+        },
+        "handler.HealthResponse": {
+            "type": "object",
+            "properties": {
+                "status": {
+                    "type": "string",
+                    "example": "ok"
+                },
+                "time": {
+                    "type": "string",
+                    "example": "2026-05-08T06:04:15Z"
                 }
             }
         },

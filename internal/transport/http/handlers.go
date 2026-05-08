@@ -106,7 +106,7 @@ func (h *NotifyHandler) CreateNotification(c *gin.Context) {
 		return
 	}
 
-	if req.ScheduledAt.Before(time.Now().UTC()) {
+	if req.ScheduledAt.Before(time.Now()) {
 		h.respondError(c, http.StatusBadRequest, "invalid_time", "Scheduled time must be in the future", nil)
 		return
 	}
@@ -200,12 +200,12 @@ func (h *NotifyHandler) CancelNotification(c *gin.Context) {
 // @Description Return service status and current timestamp. No authentication required.
 // @Tags System
 // @Produce json
-// @Success 200 {object} map[string]string "Service is healthy"
+// @Success 200 {object} HealthResponse "Service is healthy"
 // @Router /health [get]
 func (h *NotifyHandler) Health(c *gin.Context) {
-	response := map[string]string{
-		"status": "ok",
-		"time":   time.Now().Format(time.RFC3339),
+	response := HealthResponse{
+		Status: "ok",
+		Time:   time.Now(),
 	}
 	h.respondJSON(c, http.StatusOK, response)
 }

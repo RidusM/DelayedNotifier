@@ -82,6 +82,15 @@ definitions:
         example: validation failed
         type: string
     type: object
+  handler.HealthResponse:
+    properties:
+      status:
+        example: ok
+        type: string
+      time:
+        example: "2026-05-08T06:04:15Z"
+        type: string
+    type: object
   handler.LinkTokenResponse:
     properties:
       expires_in:
@@ -167,9 +176,7 @@ paths:
         "200":
           description: Service is healthy
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/handler.HealthResponse'
       summary: Health check endpoint
       tags:
       - System

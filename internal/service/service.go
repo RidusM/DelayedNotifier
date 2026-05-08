@@ -183,7 +183,7 @@ func (s *NotifyService) RegisterUser(ctx context.Context, req RegisterUserReques
 		Name:       req.Name,
 		Email:      req.Email,
 		TelegramID: telegramID,
-		CreatedAt:  time.Now().UTC(),
+		CreatedAt:  time.Now(),
 	}
 
 	err = s.tm.ExecuteInTransaction(ctx, "register_user", func(tx pgxdriver.QueryExecuter) error {
@@ -223,7 +223,7 @@ func (s *NotifyService) GenerateLinkToken(ctx context.Context, userID uuid.UUID)
 	}
 	token := hex.EncodeToString(bytes)
 
-	expiresAt := time.Now().UTC().Add(1 * time.Hour)
+	expiresAt := time.Now().Add(1 * time.Hour)
 
 	err := s.tm.ExecuteInTransaction(ctx, "create_link_token", func(tx pgxdriver.QueryExecuter) error {
 		if err := s.userRepo.CreateLinkToken(ctx, tx, userID, token, expiresAt); err != nil {
@@ -355,9 +355,9 @@ func (s *NotifyService) CreateNotify(ctx context.Context, req CreateNotification
 		Channel:     req.Channel,
 		Payload:     req.Payload,
 		UserID:      req.UserID,
-		ScheduledAt: req.ScheduledAt.UTC(),
+		ScheduledAt: req.ScheduledAt,
 		Status:      entity.StatusWaiting,
-		CreatedAt:   time.Now().UTC(),
+		CreatedAt:   time.Now(),
 	}
 
 	err = s.tm.ExecuteInTransaction(ctx, "create_notification", func(tx pgxdriver.QueryExecuter) error {
@@ -761,11 +761,11 @@ func (s *NotifyService) calculateNextAttempt(retryCount int) time.Time {
 	}
 	exp := min(retryCount, _maxRetryExponentCap)
 	delay := min(s.retryDelay*time.Duration(1<<exp), _maxRetryDelay)
-	return time.Now().UTC().Add(delay)
+	return time.Now().Add(delay)
 }
 
 func (s *NotifyService) validateCreateRequest(req CreateNotificationRequest) error {
-	if req.ScheduledAt.Before(time.Now().UTC()) {
+	if req.ScheduledAt.Before(time.Now()) {
 		return fmt.Errorf("scheduled time must be in future: %w", entity.ErrInvalidData)
 	}
 	if len(req.Payload) > _maxPayloadSize {

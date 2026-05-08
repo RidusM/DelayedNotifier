@@ -170,7 +170,7 @@ func (r *NotifyRepository) UpdateStatus(
 
 	switch status {
 	case entity.StatusSent:
-		query = query.Set("sent_at", time.Now().UTC())
+		query = query.Set("sent_at", time.Now())
 	case entity.StatusFailed:
 		query = query.Set("retry_count", squirrel.Expr("retry_count + 1"))
 	case entity.StatusCancelled, entity.StatusInProcess, entity.StatusWaiting:
